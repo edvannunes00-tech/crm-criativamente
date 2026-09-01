@@ -1,5 +1,5 @@
 /* ============================================================
-   COMPONENTES — implementação em CSS puro dos componentes
+   COMPONENTES â€” implementaÃ§Ã£o em CSS puro dos componentes
    definidos no documento de arquitetura (Fase 8A / DESIGN_SYSTEM.md)
    ============================================================ */
 
@@ -123,7 +123,7 @@
 .badge.dot-neutro .dot { background: var(--gray-2); }
 .badge.solid-accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 
-/* -------------------- BOTÕES -------------------- */
+/* -------------------- BOTÃ•ES -------------------- */
 .btn {
   font-family: var(--font-body); font-weight: 700; font-size: 13.5px;
   padding: 10px 18px; border-radius: var(--radius); border: 1px solid transparent;
@@ -149,6 +149,10 @@
 }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
 .field-error { border: 1px solid rgba(232,101,74,0.4); background: rgba(232,101,74,0.06); padding: 12px 14px; border-radius: var(--radius); font-size: 13px; color: var(--status-erro); margin-bottom: var(--space-4); }
+
+/* campos de data: Ã­cone do calendÃ¡rio invertido (fica branco, visÃ­vel no tema escuro) */
+.field input[type="date"] { color-scheme: dark; cursor: pointer; }
+.field input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
 /* -------------------- TABELA -------------------- */
 .table-wrap { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
