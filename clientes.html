@@ -13,20 +13,194 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">🚧</div>
-            <p><strong>Clientes</strong> ainda está sendo construído.</p>
-            <p style="font-size:12.5px;">Essa tela faz parte da Fase 8B, que está sendo implementada em camadas — a fundação (login, navegação, permissões, Dashboard) já está no ar.</p>
+
+        <div class="filter-bar">
+          <input type="search" id="busca" placeholder="Buscar por nome ou WhatsApp..." />
+          <div class="tabs" id="filtroStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab active" data-status="">Todos</button>
+            <button class="tab" data-status="Lead">Leads</button>
+            <button class="tab" data-status="Cliente Ativo">Ativos</button>
+            <button class="tab" data-status="Cliente Recorrente">Recorrentes</button>
+            <button class="tab" data-status="Cliente Inativo">Inativos</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary hidden" id="btnNovoLead">+ Novo Lead</button>
+        </div>
+
+        <div class="table-wrap" id="tabelaWrap">
+          <div style="padding:16px;">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
           </div>
         </div>
+
       </div>
     </div>
   </div>
 
+  <!-- Modal Novo Lead -->
+  <div id="modalOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Novo Lead</span>
+        <button class="btn-ghost" id="btnFecharModal">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalErro"></p>
+      <form id="formNovoLead">
+        <div class="field">
+          <label class="mono-label">Nome *</label>
+          <input type="text" id="fNome" required />
+        </div>
+        <div class="field">
+          <label class="mono-label">WhatsApp *</label>
+          <input type="text" id="fWhatsapp" required placeholder="(11) 99999-9999" />
+        </div>
+        <div class="field">
+          <label class="mono-label">Segmento</label>
+          <select id="fSegmento"><option value="">—</option></select>
+        </div>
+        <div class="field">
+          <label class="mono-label">Origem</label>
+          <select id="fOrigem"><option value="">—</option></select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarLead">Criar Lead</button>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    await initPage({ paginaAtual: 'clientes.html', breadcrumb: 'CRM / Clientes', title: 'Clientes' });
+    import { podeFazer } from '/src/lib/session.js';
+    import { formatarMoeda, tempoRelativo, escapeHtml, statusBadgeClasse } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'clientes.html', breadcrumb: 'CRM / Clientes', title: 'Clientes' });
+
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeCriar = podeFazer(perm, 'leads', 'criar') || podeFazer(perm, 'clientes', 'criar');
+    if (podeCriar) document.getElementById('btnNovoLead').classList.remove('hidden');
+
+    let filtroStatusAtual = '';
+    let termoBusca = '';
+    let segmentosMap = {};
+
+    async function carregarSegmentosMap() {
+      const { data } = await supabase.from('segmentos').select('id, nome').eq('empresa_id', empresaId);
+      (data || []).forEach((s) => { segmentosMap[s.id] = s.nome; });
+    }
+
+    async function carregarLista() {
+      const wrap = document.getElementById('tabelaWrap');
+      let query = supabase.from('vw_contatos_status').select('*').order('created_at', { ascending: false }).limit(200);
+
+      if (filtroStatusAtual) query = query.eq('status_calculado', filtroStatusAtual);
+      if (termoBusca) query = query.or(`nome.ilike.%${termoBusca}%,whatsapp.ilike.%${termoBusca}%`);
+
+      const { data, error } = await query;
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        wrap.innerHTML = `<div class="error-state"><p>Não foi possível carregar os clientes agora.</p></div>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><div class="icon">☺</div><p>Nenhum contato encontrado ${termoBusca || filtroStatusAtual ? 'com esse filtro' : '— os leads do site aparecem aqui automaticamente'}.</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <table class="data-table">
+          <thead><tr>
+            <th>Nome</th><th>Status</th><th>Segmento</th><th>WhatsApp</th><th>LTV</th><th>Última atividade</th>
+          </tr></thead>
+          <tbody>
+            ${data.map((c) => `
+              <tr data-id="${c.id}">
+                <td class="cell-primary">${escapeHtml(c.nome)}</td>
+                <td><span class="badge ${statusBadgeClasse(c.status_calculado)}"><span class="dot"></span>${c.status_calculado}</span></td>
+                <td>${escapeHtml(segmentosMap[c.segmento_id] || '—')}</td>
+                <td class="cell-muted">${escapeHtml(c.whatsapp || '—')}</td>
+                <td>${formatarMoeda(c.ltv_total)}</td>
+                <td class="cell-muted">${tempoRelativo(c.ultimo_contato_at || c.created_at)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      wrap.querySelectorAll('tbody tr').forEach((tr) => {
+        tr.addEventListener('click', () => {
+          window.location.href = `/ficha-cliente.html?id=${tr.dataset.id}`;
+        });
+      });
+    }
+
+    document.getElementById('busca').addEventListener('input', (e) => {
+      termoBusca = e.target.value.trim();
+      clearTimeout(window.__buscaTimeout);
+      window.__buscaTimeout = setTimeout(carregarLista, 300);
+    });
+
+    document.querySelectorAll('#filtroStatus .tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#filtroStatus .tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtroStatusAtual = btn.dataset.status;
+        carregarLista();
+      });
+    });
+
+    // ---------------- MODAL NOVO LEAD ----------------
+    const overlay = document.getElementById('modalOverlay');
+
+    async function abrirModal() {
+      overlay.classList.remove('hidden');
+      const [{ data: segmentos }, { data: origens }] = await Promise.all([
+        supabase.from('segmentos').select('id, nome').eq('empresa_id', empresaId).order('nome'),
+        supabase.from('origens_lead').select('id, nome').eq('empresa_id', empresaId).order('nome'),
+      ]);
+      document.getElementById('fSegmento').innerHTML = '<option value="">—</option>' + (segmentos || []).map((s) => `<option value="${s.id}">${escapeHtml(s.nome)}</option>`).join('');
+      document.getElementById('fOrigem').innerHTML = '<option value="">—</option>' + (origens || []).map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('');
+    }
+
+    document.getElementById('btnNovoLead').addEventListener('click', abrirModal);
+    document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+    document.getElementById('formNovoLead').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarLead');
+      btn.disabled = true; btn.textContent = 'Criando...';
+
+      const payload = {
+        empresa_id: empresaId,
+        nome: document.getElementById('fNome').value.trim(),
+        whatsapp: document.getElementById('fWhatsapp').value.trim(),
+        segmento_id: document.getElementById('fSegmento').value || null,
+        origem_id: document.getElementById('fOrigem').value || null,
+        status_relacionamento: 'Lead',
+      };
+
+      const { data, error } = await supabase.from('contatos').insert(payload).select('id').single();
+
+      btn.disabled = false; btn.textContent = 'Criar Lead';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível criar o lead. Confira os dados e tente novamente.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      window.location.href = `/ficha-cliente.html?id=${data.id}`;
+    });
+
+    await carregarSegmentosMap();
+    await carregarLista();
   </script>
 </body>
 </html>
