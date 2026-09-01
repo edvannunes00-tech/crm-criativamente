@@ -17,4 +17,9 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },
+  db: {
+    // Todo o CRM vive no schema "crm" (decisão da Fase 1) — sem isso,
+    // o cliente procuraria as tabelas/funções em "public" e falharia.
+    schema: 'crm',
+  },
 });
