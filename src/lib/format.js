@@ -62,6 +62,18 @@ export function exibirTelefone(numero) {
   return mascararTelefone(numero);
 }
 
+// Ativa "clique em qualquer lugar abre o calendário" em TODO campo
+// de data da página — chamado automaticamente pelo initPage(), então
+// nenhuma tela precisa lembrar de fazer isso manualmente.
+export function ativarCamposDeData(raiz = document) {
+  raiz.querySelectorAll('input[type="date"]:not([data-picker-ativo])').forEach((input) => {
+    input.dataset.pickerAtivo = '1';
+    input.addEventListener('click', () => {
+      if (typeof input.showPicker === 'function') input.showPicker();
+    });
+  });
+}
+
 // Mapeia status_calculado / status_relacionamento para classe de badge
 export function statusBadgeClasse(status) {
   const mapa = {
