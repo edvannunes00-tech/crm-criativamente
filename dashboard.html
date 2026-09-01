@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div class="indicator-grid" id="indicatorGrid">
+          <div class="indicator-card"><div class="skeleton skeleton-row"></div></div>
+          <div class="indicator-card"><div class="skeleton skeleton-row"></div></div>
+          <div class="indicator-card"><div class="skeleton skeleton-row"></div></div>
+          <div class="indicator-card"><div class="skeleton skeleton-row"></div></div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <span class="mono-label">Precisa da sua atenção agora</span>
+          </div>
+          <div id="atencaoFeed">
+            <div class="skeleton skeleton-row mb-4"></div>
+            <div class="skeleton skeleton-row mb-4"></div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="apontamentosCard">
+          <div class="mono-label mb-4">Apontamentos estratégicos (Gestão)</div>
+          <div id="apontamentosFeed"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, loadPermissoes, podeVisualizar, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar, renderHeader } from '/src/components/sidebar.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+
+    const perm = await loadPermissoes();
+
+    renderSidebar(document.getElementById('sidebarContainer'), {
+      perm,
+      usuarioNome: session.user.email,
+      papelNome: perm ? perm.papel_nome : null,
+      paginaAtual: 'dashboard.html',
+    });
+    renderHeader(document.getElementById('headerContainer'), {
+      breadcrumb: 'CRM / Dashboard',
+      title: 'Bom te ver por aqui',
+    });
+
+    const empresaId = perm ? perm.empresa_id : null;
+
+    // ---------------- FEED DE ATENÇÃO (operacional, sempre disponível) ----------------
+    const ICONS = {
+      followup_atrasado: { emoji: '📞', classe: 'critico', label: 'Follow-up atrasado' },
+      proposta_sem_retorno: { emoji: '📄', classe: 'atencao', label: 'Proposta sem retorno' },
+      tarefa_atrasada: { emoji: '✅', classe: 'atencao', label: 'Tarefa atrasada' },
+      projeto_atrasado: { emoji: '📦', classe: 'critico', label: 'Projeto atrasado' },
+      projeto_gargalo: { emoji: '⚠️', classe: 'atencao', label: 'Possível gargalo' },
+    };
+
+    async function carregarFeedAtencao() {
+      const feedEl = document.getElementById('atencaoFeed');
+      const { data, error } = await supabase
+        .from('vw_gestao_atencao')
+        .select('*')
+        .order('data', { ascending: true })
+        .limit(20);
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        feedEl.innerHTML = `<div class="error-state"><p>Não foi possível carregar os apontamentos agora.</p></div>`;
+        document.getElementById('indicatorGrid').innerHTML = `
+          <div class="indicator-card"><div class="label mono-label">Pontos de atenção</div><div class="value text-muted">—</div></div>
+          <div class="indicator-card"><div class="label mono-label">Follow-ups atrasados</div><div class="value text-muted">—</div></div>
+          <div class="indicator-card"><div class="label mono-label">Tarefas atrasadas</div><div class="value text-muted">—</div></div>
+          <div class="indicator-card"><div class="label mono-label">Projetos com problema</div><div class="value text-muted">—</div></div>
+        `;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        feedEl.innerHTML = `<div class="empty-state"><div class="icon">✓</div><p>Nada pendente por aqui. Tudo em dia.</p></div>`;
+        updateIndicators({ atrasados: 0, followups: 0, tarefas: 0, projetos: 0 });
+        return;
+      }
+
+      feedEl.innerHTML = data.map((item) => {
+        const meta = ICONS[item.tipo] || { emoji: 'ℹ️', classe: 'observacao', label: item.tipo };
+        return `
+          <div class="apontamento ${meta.classe}">
+            <span>${meta.emoji}</span>
+            <div>
+              <div class="titulo">${meta.label} — ${item.referencia || ''}</div>
+              <div class="detalhe">${item.detalhe || ''}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const contagem = { followups: 0, tarefas: 0, projetos: 0 };
+      data.forEach((i) => {
+        if (i.tipo === 'followup_atrasado') contagem.followups++;
+        if (i.tipo === 'tarefa_atrasada') contagem.tarefas++;
+        if (i.tipo === 'projeto_atrasado' || i.tipo === 'projeto_gargalo') contagem.projetos++;
+      });
+      updateIndicators({ atrasados: data.length, ...contagem });
+    }
+
+    function updateIndicators({ atrasados, followups, tarefas, projetos }) {
+      document.getElementById('indicatorGrid').innerHTML = `
+        <div class="indicator-card"><div class="label mono-label">Pontos de atenção</div><div class="value">${atrasados}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Follow-ups atrasados</div><div class="value">${followups}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Tarefas atrasadas</div><div class="value">${tarefas}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Projetos com problema</div><div class="value">${projetos}</div></div>
+      `;
+    }
+
+    // ---------------- APONTAMENTOS ESTRATÉGICOS (só quem tem "gestao") ----------------
+    async function carregarApontamentosGestao() {
+      if (!empresaId || !podeVisualizar(perm, 'gestao')) return;
+
+      const { data, error } = await supabase.rpc('apontamentos_gerenciais', { p_empresa_id: empresaId });
+      if (error || !data || data.length === 0) return;
+
+      document.getElementById('apontamentosCard').classList.remove('hidden');
+      document.getElementById('apontamentosFeed').innerHTML = data.map((item) => `
+        <div class="apontamento ${item.prioridade}">
+          <div>
+            <div class="titulo">${item.titulo}</div>
+            <div class="detalhe">${item.detalhe || ''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    await Promise.all([carregarFeedAtencao(), carregarApontamentosGestao()]);
+  </script>
+</body>
+</html>

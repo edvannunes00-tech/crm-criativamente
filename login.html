@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Entrar — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-logo"><span>CRIATIVAMENTE<span class="dot">.</span></span></div>
+      <div class="auth-title">Entrar</div>
+      <div class="auth-subtitle">Acesse o painel interno da Criativamente.</div>
+
+      <p class="field-error hidden" id="errorBox"></p>
+
+      <form id="loginForm">
+        <div class="field">
+          <label class="mono-label">E-mail</label>
+          <input type="email" id="email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label class="mono-label">Senha</label>
+          <input type="password" id="password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Entrar</button>
+      </form>
+
+      <p class="mt-4" style="text-align:center;">
+        <a href="/reset-password.html" class="mono-label" style="text-decoration:underline;">Esqueci minha senha</a>
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+
+    // se já estiver logado, pula direto pro dashboard
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) window.location.href = '/dashboard.html';
+
+    const form = document.getElementById('loginForm');
+    const errorBox = document.getElementById('errorBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.classList.add('hidden');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Entrando...';
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        errorBox.textContent = error.message === 'Invalid login credentials'
+          ? 'E-mail ou senha incorretos.'
+          : 'Não foi possível entrar agora. Tente novamente.';
+        errorBox.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Entrar';
+        return;
+      }
+
+      window.location.href = '/dashboard.html';
+    });
+  </script>
+</body>
+</html>

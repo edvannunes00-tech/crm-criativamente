@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Criar senha — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-logo"><span>CRIATIVAMENTE<span class="dot">.</span></span></div>
+      <div class="auth-title" id="pageTitle">Criar sua senha</div>
+      <div class="auth-subtitle" id="pageSubtitle">Defina uma senha pra acessar o CRM.</div>
+
+      <p class="field-error hidden" id="errorBox"></p>
+      <div id="loadingBox" class="text-muted" style="font-size:13.5px;">Confirmando seu acesso...</div>
+
+      <form id="passwordForm" class="hidden">
+        <div class="field">
+          <label class="mono-label">Nova senha</label>
+          <input type="password" id="password" required minlength="8" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label class="mono-label">Confirmar senha</label>
+          <input type="password" id="passwordConfirm" required minlength="8" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Salvar e entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+
+    const loadingBox = document.getElementById('loadingBox');
+    const form = document.getElementById('passwordForm');
+    const errorBox = document.getElementById('errorBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // O client já processa o token da URL sozinho (detectSessionInUrl: true).
+    // Só precisamos esperar esse processamento terminar.
+    async function aguardarSessao(tentativas = 20) {
+      for (let i = 0; i < tentativas; i++) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) return session;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return null;
+    }
+
+    const session = await aguardarSessao();
+
+    if (!session) {
+      loadingBox.classList.add('hidden');
+      errorBox.textContent = 'Este link expirou ou já foi usado. Peça um novo convite ou tente "Esqueci minha senha" na tela de login.';
+      errorBox.classList.remove('hidden');
+    } else {
+      loadingBox.classList.add('hidden');
+      form.classList.remove('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.classList.add('hidden');
+
+      const password = document.getElementById('password').value;
+      const passwordConfirm = document.getElementById('passwordConfirm').value;
+
+      if (password !== passwordConfirm) {
+        errorBox.textContent = 'As senhas não coincidem.';
+        errorBox.classList.remove('hidden');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Salvando...';
+
+      const { error } = await supabase.auth.updateUser({ password });
+
+      if (error) {
+        errorBox.textContent = 'Não foi possível salvar a senha agora. Tente novamente.';
+        errorBox.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Salvar e entrar';
+        return;
+      }
+
+      window.location.href = '/dashboard.html';
+    });
+  </script>
+</body>
+</html>

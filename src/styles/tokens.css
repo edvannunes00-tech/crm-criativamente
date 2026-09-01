@@ -1,0 +1,93 @@
+/* ============================================================
+   DESIGN TOKENS — extraídos 1:1 do DESIGN_SYSTEM.md aprovado
+   Fonte da verdade: criativamentedigital.com.br
+   ------------------------------------------------------------
+   Fontes: SEM dependência de Google Fonts (nem de nenhum CDN
+   externo) — de propósito, a pedido explícito. Usamos pilhas de
+   fontes de sistema que chegam muito perto visualmente do
+   Montserrat (geométrica, sem serifa) e do JetBrains Mono
+   (monoespaçada), sem nenhum ponto de falha externo. Se algum
+   dia quisermos os arquivos de fonte exatos, é só adicionar os
+   .woff2 na pasta public/fonts/ e trocar a declaração abaixo —
+   nada mais no projeto precisa mudar.
+   ============================================================ */
+
+:root {
+  /* cor */
+  --black: #0A0A0A;
+  --near-black: #0F0F0E;
+  --white: #F5F5F2;
+  --gray-1: #B8B8B3;
+  --gray-2: #7A7A75;
+  --gray-3: #4A4A46;
+  --line: rgba(245, 245, 242, 0.12);
+  --line-strong: rgba(245, 245, 242, 0.28);
+  --accent: #9CFF19;
+  --accent-ink: #0A1400;
+
+  /* semânticas — desaturadas de propósito, nunca competem com --accent */
+  --status-sucesso: #6FCF8E;
+  --status-alerta: #E8B34C;
+  --status-erro: #E8654A;
+  --status-info: #6FA8DC;
+
+  /* tipografia — pilhas de sistema, sem dependência externa.
+     "Montserrat" e "JetBrains Mono" ficam listadas primeiro:
+     se um dia existirem localmente (instaladas no SO do usuário
+     ou adicionadas como @font-face local no projeto), são usadas
+     automaticamente; senão, cai no fallback de sistema, que já
+     fica muito próximo visualmente. */
+  --font-display: "Montserrat", "Helvetica Neue", Arial, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Montserrat", "Helvetica Neue", Arial, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* espaçamento — escala consistente usada em todo o app */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* layout */
+  --sidebar-width: 248px;
+  --header-height: 64px;
+  --radius: 2px; /* cantos quase retos — assinatura do site, nunca "pill" */
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--black);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+a { color: inherit; }
+
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+
+/* rótulos/metadados: sempre mono, uppercase, tracking — assinatura visual do site */
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-2);
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--radius); }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
