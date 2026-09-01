@@ -6,6 +6,16 @@
   <title>Agenda — CRM Criativamente</title>
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .dia-grupo { margin-bottom: 20px; }
+    .dia-titulo { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-2); margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+    .dia-titulo.hoje { color: var(--accent); }
+    .agenda-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 6px; background: var(--near-black); }
+    .agenda-item .hora { font-family: var(--font-mono); font-size: 12px; color: var(--gray-2); width: 44px; flex-shrink: 0; }
+    .agenda-item .conteudo { flex: 1; }
+    .agenda-item .conteudo .titulo { font-size: 13.5px; font-weight: 600; }
+    .agenda-item .conteudo .detalhe { font-size: 12px; color: var(--gray-2); }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -13,20 +23,110 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">🚧</div>
-            <p><strong>Agenda</strong> ainda está sendo construído.</p>
-            <p style="font-size:12.5px;">Essa tela faz parte da Fase 8B, que está sendo implementada em camadas — a fundação (login, navegação, permissões, Dashboard) já está no ar.</p>
+
+        <div class="filter-bar">
+          <div class="tabs" id="filtroPeriodo" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab" data-periodo="atrasados">Atrasados</button>
+            <button class="tab active" data-periodo="7">Próximos 7 dias</button>
+            <button class="tab" data-periodo="30">Próximos 30 dias</button>
           </div>
         </div>
+
+        <div id="agendaLista"><div class="skeleton" style="height:300px;"></div></div>
+
       </div>
     </div>
   </div>
 
   <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
+    import { escapeHtml } from '/src/lib/format.js';
+
     await initPage({ paginaAtual: 'agenda.html', breadcrumb: 'CRM / Agenda', title: 'Agenda' });
+
+    const TIPO_ICON = { evento: '📅', followup: '📞', tarefa: '✓', projeto: '📦' };
+    const TIPO_LABEL = { evento: 'Evento', followup: 'Follow-up', tarefa: 'Tarefa', projeto: 'Prazo de projeto' };
+
+    function hojeISO() { return new Date().toISOString().slice(0, 10); }
+    function somarDias(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+
+    async function carregar(periodo) {
+      const el = document.getElementById('agendaLista');
+      el.innerHTML = '<div class="skeleton" style="height:300px;"></div>';
+
+      const hoje = hojeISO();
+      let inicio, fim;
+      if (periodo === 'atrasados') { inicio = '1900-01-01'; fim = somarDias(hoje, -1); }
+      else { inicio = hoje; fim = somarDias(hoje, Number(periodo)); }
+
+      const [eventos, followups, tarefas, projetos] = await Promise.all([
+        supabase.from('eventos_agenda').select('id, titulo, data_hora, tipo').gte('data_hora', inicio).lte('data_hora', fim + 'T23:59:59'),
+        supabase.from('followups').select('id, motivo, data_hora, contato_id, contatos(nome)').eq('status', 'pendente').gte('data_hora', inicio).lte('data_hora', fim + 'T23:59:59'),
+        supabase.from('tarefas').select('id, titulo, prazo').in('status', ['pendente', 'em_andamento']).not('prazo', 'is', null).gte('prazo', inicio).lte('prazo', fim),
+        supabase.from('projetos').select('id, nome, prazo').not('status', 'in', '(concluido,cancelado)').not('prazo', 'is', null).gte('prazo', inicio).lte('prazo', fim),
+      ]);
+
+      const algumErro = [eventos, followups, tarefas, projetos].find((r) => r.error);
+      if (algumErro) {
+        if (await handleQueryError(algumErro.error)) return;
+        el.innerHTML = `<div class="error-state"><p>Não foi possível carregar a agenda agora.</p></div>`;
+        return;
+      }
+
+      const itens = [
+        ...(eventos.data || []).map((e) => ({ tipo: 'evento', titulo: e.titulo, data: e.data_hora, detalhe: '' })),
+        ...(followups.data || []).map((f) => ({ tipo: 'followup', titulo: (f.contatos && f.contatos.nome) || 'Follow-up', data: f.data_hora, detalhe: f.motivo || '' })),
+        ...(tarefas.data || []).map((t) => ({ tipo: 'tarefa', titulo: t.titulo, data: t.prazo, detalhe: '' })),
+        ...(projetos.data || []).map((p) => ({ tipo: 'projeto', titulo: p.nome, data: p.prazo, detalhe: 'Prazo do projeto' })),
+      ].sort((a, b) => new Date(a.data) - new Date(b.data));
+
+      if (itens.length === 0) {
+        el.innerHTML = `<div class="empty-state"><div class="icon">☺</div><p>Nada agendado neste período.</p></div>`;
+        return;
+      }
+
+      const grupos = {};
+      itens.forEach((item) => {
+        const dia = item.data.slice(0, 10);
+        if (!grupos[dia]) grupos[dia] = [];
+        grupos[dia].push(item);
+      });
+
+      el.innerHTML = Object.keys(grupos).map((dia) => {
+        const ehHoje = dia === hoje;
+        const dataFormatada = new Date(dia + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' });
+        return `
+          <div class="dia-grupo">
+            <div class="dia-titulo ${ehHoje ? 'hoje' : ''}">${ehHoje ? 'Hoje — ' : ''}${dataFormatada}</div>
+            ${grupos[dia].map((item) => {
+              const hora = item.data.length > 10 ? item.data.slice(11, 16) : '—';
+              return `
+                <div class="agenda-item">
+                  <div class="hora">${hora}</div>
+                  <span>${TIPO_ICON[item.tipo]}</span>
+                  <div class="conteudo">
+                    <div class="titulo">${escapeHtml(item.titulo)}</div>
+                    <div class="detalhe">${TIPO_LABEL[item.tipo]}${item.detalhe ? ' — ' + escapeHtml(item.detalhe) : ''}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }).join('');
+    }
+
+    document.querySelectorAll('#filtroPeriodo .tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#filtroPeriodo .tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        carregar(btn.dataset.periodo);
+      });
+    });
+
+    await carregar('7');
   </script>
 </body>
 </html>
