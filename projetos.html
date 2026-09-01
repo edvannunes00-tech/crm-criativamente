@@ -6,6 +6,12 @@
   <title>Projetos — CRM Criativamente</title>
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .progresso-barra { width: 100%; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+    .progresso-barra .fill { height: 100%; background: var(--accent); }
+    .projeto-card { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; cursor: pointer; background: var(--near-black); }
+    .projeto-card:hover { border-color: var(--line-strong); }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -13,20 +19,166 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">🚧</div>
-            <p><strong>Projetos</strong> ainda está sendo construído.</p>
-            <p style="font-size:12.5px;">Essa tela faz parte da Fase 8B, que está sendo implementada em camadas — a fundação (login, navegação, permissões, Dashboard) já está no ar.</p>
+
+        <div class="filter-bar">
+          <div class="tabs" id="filtroStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab active" data-status="ativo">Ativos</button>
+            <button class="tab" data-status="pausado">Pausados</button>
+            <button class="tab" data-status="concluido">Concluídos</button>
+            <button class="tab" data-status="todos">Todos</button>
           </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary hidden" id="btnNovoProjeto">+ Novo Projeto</button>
         </div>
+
+        <div id="listaProjetos"><div class="skeleton" style="height:300px;"></div></div>
+
       </div>
     </div>
   </div>
 
+  <!-- Modal Novo Projeto -->
+  <div id="modalOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:460px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Novo Projeto</span>
+        <button class="btn-ghost" id="btnFecharModal">Fechar</button>
+      </div>
+      <p class="text-muted mb-4" style="font-size:12.5px;">Um projeto pode existir sem cliente — por exemplo, um projeto interno.</p>
+      <p class="field-error hidden" id="modalErro"></p>
+      <form id="formNovoProjeto">
+        <div class="field">
+          <label class="mono-label">Nome *</label>
+          <input type="text" id="fNome" required />
+        </div>
+        <div class="field">
+          <label class="mono-label">Template *</label>
+          <select id="fTemplate" required></select>
+        </div>
+        <div class="field">
+          <label class="mono-label">Cliente (opcional)</label>
+          <input type="text" id="fBuscaContato" placeholder="Deixe vazio se for projeto interno" autocomplete="off" />
+          <div id="listaContatos" style="border:1px solid var(--line); border-top:none; max-height:140px; overflow-y:auto;"></div>
+          <input type="hidden" id="fContatoId" />
+          <div id="contatoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarProjeto">Criar Projeto</button>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    await initPage({ paginaAtual: 'projetos.html', breadcrumb: 'CRM / Projetos', title: 'Projetos' });
+    import { formatarData, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'projetos.html', breadcrumb: 'CRM / Projetos', title: 'Projetos' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeCriar = podeFazer(perm, 'projetos', 'criar');
+    if (podeCriar) document.getElementById('btnNovoProjeto').classList.remove('hidden');
+
+    let filtroStatus = 'ativo';
+
+    async function carregarLista() {
+      const el = document.getElementById('listaProjetos');
+
+      const { data: progresso, error } = await supabase.from('vw_projeto_progresso').select('*');
+      if (error) {
+        if (await handleQueryError(error)) return;
+        el.innerHTML = `<div class="error-state"><p>Não foi possível carregar os projetos agora.</p></div>`;
+        return;
+      }
+
+      let lista = progresso || [];
+      if (filtroStatus !== 'todos') lista = lista.filter((p) => p.status === filtroStatus);
+
+      if (lista.length === 0) {
+        el.innerHTML = `<div class="empty-state"><p>Nenhum projeto ${filtroStatus !== 'todos' ? 'nesse status' : ''} ainda.</p></div>`;
+        return;
+      }
+
+      el.innerHTML = lista.map((p) => `
+        <div class="projeto-card" data-id="${p.projeto_id}">
+          <div class="flex items-center justify-between">
+            <div style="font-weight:600; font-size:14px;">${escapeHtml(p.nome)}</div>
+            <div class="flex gap-2 items-center">
+              ${p.atrasado ? '<span class="badge dot-erro"><span class="dot"></span>Atrasado</span>' : ''}
+              <span class="badge dot-info"><span class="dot"></span>${escapeHtml(p.status)}</span>
+            </div>
+          </div>
+          <div class="text-muted mt-1" style="font-size:12.5px;">${p.prazo ? 'Prazo: ' + formatarData(p.prazo) : 'Sem prazo definido'} · ${p.etapas_concluidas}/${p.total_etapas} etapas · ${p.progresso_percentual}%</div>
+          <div class="progresso-barra"><div class="fill" style="width:${p.progresso_percentual}%;"></div></div>
+        </div>
+      `).join('');
+
+      el.querySelectorAll('.projeto-card').forEach((card) => {
+        card.addEventListener('click', () => { window.location.href = `/ficha-projeto.html?id=${card.dataset.id}`; });
+      });
+    }
+
+    document.querySelectorAll('#filtroStatus .tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#filtroStatus .tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtroStatus = btn.dataset.status;
+        carregarLista();
+      });
+    });
+
+    // ---------------- MODAL NOVO PROJETO ----------------
+    const overlay = document.getElementById('modalOverlay');
+
+    document.getElementById('btnNovoProjeto').addEventListener('click', async () => {
+      overlay.classList.remove('hidden');
+      const { data: templates } = await supabase.from('projeto_templates').select('id, nome').eq('empresa_id', empresaId);
+      document.getElementById('fTemplate').innerHTML = (templates || []).map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('');
+    });
+    document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+    document.getElementById('fBuscaContato').addEventListener('input', async (e) => {
+      const termo = e.target.value.trim();
+      const lista = document.getElementById('listaContatos');
+      if (termo.length < 2) { lista.innerHTML = ''; return; }
+      const { data } = await supabase.from('contatos').select('id, nome').ilike('nome', `%${termo}%`).limit(8);
+      lista.innerHTML = (data || []).map((c) => `<div class="contato-opcao" data-id="${c.id}" data-nome="${escapeHtml(c.nome)}" style="padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line);">${escapeHtml(c.nome)}</div>`).join('');
+      lista.querySelectorAll('.contato-opcao').forEach((op) => {
+        op.addEventListener('click', () => {
+          document.getElementById('fContatoId').value = op.dataset.id;
+          document.getElementById('contatoSelecionado').textContent = `Selecionado: ${op.dataset.nome}`;
+          document.getElementById('fBuscaContato').value = op.dataset.nome;
+          lista.innerHTML = '';
+        });
+      });
+    });
+
+    document.getElementById('formNovoProjeto').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarProjeto');
+      btn.disabled = true; btn.textContent = 'Criando...';
+
+      const { data, error } = await supabase.rpc('criar_projeto', {
+        p_empresa_id: empresaId,
+        p_template_id: document.getElementById('fTemplate').value,
+        p_nome: document.getElementById('fNome').value.trim(),
+        p_contato_id: document.getElementById('fContatoId').value || null,
+      });
+
+      btn.disabled = false; btn.textContent = 'Criar Projeto';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível criar o projeto agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      window.location.href = `/ficha-projeto.html?id=${data}`;
+    });
+
+    await carregarLista();
   </script>
 </body>
 </html>
