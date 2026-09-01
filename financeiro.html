@@ -6,6 +6,10 @@
   <title>Financeiro — CRM Criativamente</title>
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .aviso-gerencial { font-size: 11px; color: var(--gray-2); margin: -8px 0 20px; font-family: var(--font-mono); }
+    .risco-negativo { border: 1px solid rgba(232,101,74,0.4); background: rgba(232,101,74,0.08); padding: 12px 16px; border-radius: var(--radius); color: var(--status-erro); font-size: 13px; margin-bottom: 20px; }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -13,20 +17,364 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">🚧</div>
-            <p><strong>Financeiro</strong> ainda está sendo construído.</p>
-            <p style="font-size:12.5px;">Essa tela faz parte da Fase 8B, que está sendo implementada em camadas — a fundação (login, navegação, permissões, Dashboard) já está no ar.</p>
-          </div>
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab active" data-tab="visao">Visão Geral</button>
+          <button class="tab" data-tab="receber">Contas a Receber</button>
+          <button class="tab" data-tab="despesas">Despesas</button>
+          <button class="tab" data-tab="conciliacao">Conciliação</button>
         </div>
+
+        <div id="tabContent"><div class="skeleton" style="height:300px;"></div></div>
+
       </div>
     </div>
   </div>
 
+  <!-- Modal Nova Despesa -->
+  <div id="modalDespesaOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Nova Despesa</span>
+        <button class="btn-ghost" id="btnFecharModalDespesa">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalDespesaErro"></p>
+      <form id="formNovaDespesa">
+        <div class="field"><label class="mono-label">Descrição *</label><input type="text" id="dDescricao" required /></div>
+        <div class="field"><label class="mono-label">Categoria</label><select id="dCategoria"><option value="">—</option></select></div>
+        <div class="field"><label class="mono-label">Valor *</label><input type="text" id="dValor" required placeholder="0,00" /></div>
+        <div class="field"><label class="mono-label">Tipo</label>
+          <select id="dTipo"><option value="variavel">Variável</option><option value="fixa">Fixa</option></select>
+        </div>
+        <div class="field"><label class="mono-label">Fornecedor/Responsável</label><input type="text" id="dFornecedor" /></div>
+        <div class="field"><label class="mono-label">Data prevista</label><input type="date" id="dDataPrevista" /></div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarDespesa">Criar Despesa</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Resolver Conciliação -->
+  <div id="modalResolverOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Resolver Divergência</span>
+        <button class="btn-ghost" id="btnFecharModalResolver">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalResolverErro"></p>
+      <form id="formResolver">
+        <input type="hidden" id="rOcorrenciaId" />
+        <div class="field">
+          <label class="mono-label">Motivo *</label>
+          <textarea id="rMotivo" rows="3" required placeholder="Explique o que aconteceu com essa diferença..."></textarea>
+        </div>
+        <div class="flex gap-3">
+          <button type="button" class="btn btn-secondary" style="flex:1;" id="btnDescartar">Descartar</button>
+          <button type="submit" class="btn btn-primary" style="flex:1;">Marcar como Resolvida</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    await initPage({ paginaAtual: 'financeiro.html', breadcrumb: 'CRM / Financeiro', title: 'Financeiro' });
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'financeiro.html', breadcrumb: 'CRM / Financeiro', title: 'Financeiro' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeEditar = podeFazer(perm, 'financeiro', 'editar');
+
+    function valorOuTraco(v) { return v === null || v === undefined ? '—' : formatarMoeda(v); }
+    function percentOuTraco(v) { return v === null || v === undefined ? '—' : `${v}%`; }
+
+    // ---------------- VISÃO GERAL ----------------
+    async function abaVisaoGeral() {
+      const hoje = new Date();
+      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
+      const fimMes = hoje.toISOString().slice(0, 10);
+
+      const [{ data: resumo, error: erroResumo }, { data: caixa, error: erroCaixa }] = await Promise.all([
+        supabase.rpc('resumo_financeiro', { p_empresa_id: empresaId, p_data_inicio: inicioMes, p_data_fim: fimMes }),
+        supabase.rpc('caixa_projetado', { p_empresa_id: empresaId, p_dias: 30 }),
+      ]);
+
+      if (erroResumo || erroCaixa) {
+        if (await handleQueryError(erroResumo || erroCaixa)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar o resumo financeiro agora.</p></div>`;
+      }
+
+      const r = (resumo && resumo[0]) || {};
+      const c = (caixa && caixa[0]) || {};
+
+      return `
+        <div class="aviso-gerencial">Estimativa gerencial — não substitui apuração contábil oficial. Período: mês atual.</div>
+        <div class="indicator-grid">
+          <div class="indicator-card"><div class="label mono-label">Faturamento</div><div class="value">${valorOuTraco(r.faturamento)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Recebido</div><div class="value">${valorOuTraco(r.recebido)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">A Receber</div><div class="value">${valorOuTraco(r.a_receber)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Despesas</div><div class="value">${valorOuTraco(r.despesas_total)}</div></div>
+        </div>
+        <div class="indicator-grid">
+          <div class="indicator-card"><div class="label mono-label">Taxas pagas</div><div class="value" style="font-size:18px;">${valorOuTraco(r.taxas_total)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Impostos estimados</div><div class="value" style="font-size:18px;">${valorOuTraco(r.impostos_estimados)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">EBITDA (margem ${percentOuTraco(r.margem_ebitda)})</div><div class="value" style="font-size:18px;">${valorOuTraco(r.ebitda)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Lucro gerencial (margem ${percentOuTraco(r.margem_liquida)})</div><div class="value" style="font-size:18px;">${valorOuTraco(r.lucro_gerencial)}</div></div>
+        </div>
+
+        <div class="mono-label mb-4" style="margin-top:8px;">Caixa</div>
+        ${c.risco_negativo === true ? `<div class="risco-negativo">⚠️ O caixa projetado para os próximos 30 dias pode ficar negativo.</div>` : ''}
+        <div class="indicator-grid">
+          <div class="indicator-card"><div class="label mono-label">Caixa atual</div><div class="value" style="font-size:18px;">${valorOuTraco(c.caixa_atual)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Entradas previstas (30d)</div><div class="value" style="font-size:18px;">${valorOuTraco(c.entradas_previstas)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Saídas previstas (30d)</div><div class="value" style="font-size:18px;">${valorOuTraco(c.saidas_previstas)}</div></div>
+          <div class="indicator-card"><div class="label mono-label">Caixa projetado (30d)</div><div class="value" style="font-size:18px;">${valorOuTraco(c.caixa_projetado)}</div></div>
+        </div>
+      `;
+    }
+
+    // ---------------- CONTAS A RECEBER ----------------
+    async function abaReceber() {
+      const { data, error } = await supabase.from('vw_contas_a_receber').select('*').order('data_prevista');
+      if (error) {
+        if (await handleQueryError(error)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar as contas a receber.</p></div>`;
+      }
+      if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhuma conta a receber pendente.</p></div>`;
+
+      return `
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Cliente</th><th>Parcela</th><th>Forma</th><th>Valor Líquido</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${data.map((r) => `
+              <tr>
+                <td class="cell-primary">${escapeHtml(r.cliente_nome)}</td>
+                <td>${r.numero_parcela}/${r.total_parcelas}</td>
+                <td>${escapeHtml(r.forma_pagamento)}</td>
+                <td>${formatarMoeda(r.valor_liquido)}</td>
+                <td class="cell-muted">${formatarData(r.data_prevista)}</td>
+                <td><span class="badge ${r.atrasado ? 'dot-erro' : 'dot-alerta'}"><span class="dot"></span>${r.atrasado ? 'Atrasado' : 'Previsto'}</span></td>
+                <td>${podeEditar ? `<button class="btn btn-secondary btn-sm btn-marcar-recebido" data-id="${r.id}">Marcar recebido</button>` : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `;
+    }
+
+    // ---------------- DESPESAS ----------------
+    let filtroDespesas = 'previsto';
+    async function abaDespesas() {
+      let query = supabase.from('despesas').select('*, categorias_financeiras(nome)').order('data_prevista', { ascending: true, nullsFirst: false });
+      if (filtroDespesas !== 'todas') query = query.eq('status', filtroDespesas);
+      const { data, error } = await query;
+
+      if (error) {
+        if (await handleQueryError(error)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar as despesas.</p></div>`;
+      }
+
+      const tabelaHtml = (!data || data.length === 0)
+        ? `<div class="empty-state"><p>Nenhuma despesa nesse filtro.</p></div>`
+        : `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Descrição</th><th>Categoria</th><th>Fornecedor</th><th>Valor</th><th>Prevista</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${data.map((d) => `
+                <tr>
+                  <td class="cell-primary">${escapeHtml(d.descricao)}</td>
+                  <td>${escapeHtml((d.categorias_financeiras && d.categorias_financeiras.nome) || '—')}</td>
+                  <td>${escapeHtml(d.fornecedor_responsavel || '—')}</td>
+                  <td>${formatarMoeda(d.valor)}</td>
+                  <td class="cell-muted">${d.data_prevista ? formatarData(d.data_prevista) : '—'}</td>
+                  <td><span class="badge dot-info"><span class="dot"></span>${d.status}</span></td>
+                  <td>${podeEditar && d.status === 'previsto' ? `<button class="btn btn-secondary btn-sm btn-marcar-pago" data-id="${d.id}">Marcar pago</button>` : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+        `;
+
+      return `
+        <div class="filter-bar">
+          <div class="tabs" id="filtroDespesasStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab ${filtroDespesas === 'previsto' ? 'active' : ''}" data-status="previsto">A pagar</button>
+            <button class="tab ${filtroDespesas === 'pago' ? 'active' : ''}" data-status="pago">Pagas</button>
+            <button class="tab ${filtroDespesas === 'todas' ? 'active' : ''}" data-status="todas">Todas</button>
+          </div>
+          <div class="spacer"></div>
+          ${podeFazer(perm, 'financeiro', 'criar') ? `<button class="btn btn-primary" id="btnNovaDespesa">+ Nova Despesa</button>` : ''}
+        </div>
+        ${tabelaHtml}
+      `;
+    }
+
+    // ---------------- CONCILIAÇÃO ----------------
+    let filtroConciliacao = 'abertas';
+    async function abaConciliacao() {
+      let query = supabase.from('conciliacao_ocorrencias').select('*, oportunidades(titulo, contatos(nome))').order('created_at', { ascending: false });
+      query = filtroConciliacao === 'abertas' ? query.in('status', ['aberta', 'em_analise']) : query.in('status', ['resolvida', 'descartada']);
+      const { data, error } = await query;
+
+      if (error) {
+        if (await handleQueryError(error)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar a conciliação.</p></div>`;
+      }
+
+      const listaHtml = (!data || data.length === 0)
+        ? `<div class="empty-state"><div class="icon">✓</div><p>${filtroConciliacao === 'abertas' ? 'Nenhuma divergência aberta. Tudo conciliado.' : 'Nenhum histórico ainda.'}</p></div>`
+        : data.map((o) => {
+            const op = o.oportunidades || {};
+            const contato = op.contatos || {};
+            return `
+              <div class="card">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div style="font-weight:600; font-size:13.5px;">${escapeHtml(op.titulo || '—')} — ${escapeHtml(contato.nome || '—')}</div>
+                    <div class="text-muted" style="font-size:12.5px;">Esperado: ${formatarMoeda(o.valor_esperado)} · Encontrado: ${formatarMoeda(o.valor_encontrado)} · Diferença: ${formatarMoeda(o.diferenca)}</div>
+                    ${o.motivo ? `<div class="text-muted mt-1" style="font-size:12px;">Motivo: ${escapeHtml(o.motivo)}</div>` : ''}
+                  </div>
+                  <div class="flex gap-2 items-center">
+                    <span class="badge ${o.status === 'resolvida' ? 'dot-sucesso' : o.status === 'descartada' ? 'dot-neutro' : 'dot-erro'}"><span class="dot"></span>${o.status}</span>
+                    ${podeEditar && (o.status === 'aberta' || o.status === 'em_analise') ? `<button class="btn btn-secondary btn-sm btn-resolver" data-id="${o.id}">Analisar</button>` : ''}
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+      return `
+        <div class="filter-bar">
+          <div class="tabs" id="filtroConciliacaoStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab ${filtroConciliacao === 'abertas' ? 'active' : ''}" data-status="abertas">Em aberto</button>
+            <button class="tab ${filtroConciliacao === 'historico' ? 'active' : ''}" data-status="historico">Histórico</button>
+          </div>
+        </div>
+        ${listaHtml}
+      `;
+    }
+
+    // ---------------- INTERAÇÕES POR ABA ----------------
+    function ativarInteracoes(nome, container) {
+      if (nome === 'receber') {
+        container.querySelectorAll('.btn-marcar-recebido').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const { error } = await supabase.from('recebimentos').update({ status: 'recebido', data_efetiva: new Date().toISOString().slice(0, 10) }).eq('id', btn.dataset.id);
+            if (!error) await abrirAba('receber');
+          });
+        });
+      }
+      if (nome === 'despesas') {
+        container.querySelectorAll('#filtroDespesasStatus .tab').forEach((btn) => {
+          btn.addEventListener('click', () => { filtroDespesas = btn.dataset.status; abrirAba('despesas'); });
+        });
+        const btnNova = container.querySelector('#btnNovaDespesa');
+        if (btnNova) btnNova.addEventListener('click', abrirModalDespesa);
+        container.querySelectorAll('.btn-marcar-pago').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const { error } = await supabase.from('despesas').update({ status: 'pago', data_efetiva: new Date().toISOString().slice(0, 10) }).eq('id', btn.dataset.id);
+            if (!error) await abrirAba('despesas');
+          });
+        });
+      }
+      if (nome === 'conciliacao') {
+        container.querySelectorAll('#filtroConciliacaoStatus .tab').forEach((btn) => {
+          btn.addEventListener('click', () => { filtroConciliacao = btn.dataset.status; abrirAba('conciliacao'); });
+        });
+        container.querySelectorAll('.btn-resolver').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            document.getElementById('rOcorrenciaId').value = btn.dataset.id;
+            document.getElementById('modalResolverErro').classList.add('hidden');
+            document.getElementById('rMotivo').value = '';
+            document.getElementById('modalResolverOverlay').classList.remove('hidden');
+          });
+        });
+      }
+    }
+
+    const abas = { visao: abaVisaoGeral, receber: abaReceber, despesas: abaDespesas, conciliacao: abaConciliacao };
+
+    async function abrirAba(nome) {
+      document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));
+      const content = document.getElementById('tabContent');
+      content.innerHTML = '<div class="skeleton" style="height:300px;"></div>';
+      content.innerHTML = await abas[nome]();
+      ativarInteracoes(nome, content);
+    }
+
+    document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
+
+    // ---------------- MODAL NOVA DESPESA ----------------
+    const overlayDespesa = document.getElementById('modalDespesaOverlay');
+    async function abrirModalDespesa() {
+      overlayDespesa.classList.remove('hidden');
+      const { data: categorias } = await supabase.from('categorias_financeiras').select('id, nome').eq('empresa_id', empresaId);
+      document.getElementById('dCategoria').innerHTML = '<option value="">—</option>' + (categorias || []).map((c) => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+    }
+    document.getElementById('btnFecharModalDespesa').addEventListener('click', () => overlayDespesa.classList.add('hidden'));
+    overlayDespesa.addEventListener('click', (e) => { if (e.target === overlayDespesa) overlayDespesa.classList.add('hidden'); });
+
+    document.getElementById('formNovaDespesa').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalDespesaErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarDespesa');
+      btn.disabled = true; btn.textContent = 'Criando...';
+
+      const valorTexto = document.getElementById('dValor').value.replace(/\./g, '').replace(',', '.');
+      const payload = {
+        empresa_id: empresaId,
+        descricao: document.getElementById('dDescricao').value.trim(),
+        categoria_id: document.getElementById('dCategoria').value || null,
+        valor: Number(valorTexto),
+        tipo: document.getElementById('dTipo').value,
+        fornecedor_responsavel: document.getElementById('dFornecedor').value.trim() || null,
+        data_prevista: document.getElementById('dDataPrevista').value || null,
+        status: 'previsto',
+      };
+
+      const { error } = await supabase.from('despesas').insert(payload);
+      btn.disabled = false; btn.textContent = 'Criar Despesa';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível criar a despesa agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      overlayDespesa.classList.add('hidden');
+      document.getElementById('formNovaDespesa').reset();
+      await abrirAba('despesas');
+    });
+
+    // ---------------- MODAL RESOLVER CONCILIAÇÃO ----------------
+    const overlayResolver = document.getElementById('modalResolverOverlay');
+    document.getElementById('btnFecharModalResolver').addEventListener('click', () => overlayResolver.classList.add('hidden'));
+    overlayResolver.addEventListener('click', (e) => { if (e.target === overlayResolver) overlayResolver.classList.add('hidden'); });
+
+    async function resolverOcorrencia(status) {
+      const erroBox = document.getElementById('modalResolverErro');
+      erroBox.classList.add('hidden');
+      const motivo = document.getElementById('rMotivo').value.trim();
+      if (!motivo) {
+        erroBox.textContent = 'É obrigatório informar um motivo.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+      const { error } = await supabase.from('conciliacao_ocorrencias').update({ status, motivo }).eq('id', document.getElementById('rOcorrenciaId').value);
+      if (error) {
+        erroBox.textContent = 'Não foi possível registrar agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+      overlayResolver.classList.add('hidden');
+      await abrirAba('conciliacao');
+    }
+
+    document.getElementById('formResolver').addEventListener('submit', async (e) => { e.preventDefault(); await resolverOcorrencia('resolvida'); });
+    document.getElementById('btnDescartar').addEventListener('click', async () => await resolverOcorrencia('descartada'));
+
+    await abrirAba('visao');
   </script>
 </body>
 </html>
