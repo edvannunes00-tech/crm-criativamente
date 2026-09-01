@@ -55,6 +55,13 @@ export function aplicarMascaraTelefone(input) {
   });
 }
 
+// Pra EXIBIÇÃO de um número já salvo (pode ter vindo sem máscara,
+// ex: digitado direto no banco ou colado sem formatação)
+export function exibirTelefone(numero) {
+  if (!numero) return '—';
+  return mascararTelefone(numero);
+}
+
 // Mapeia status_calculado / status_relacionamento para classe de badge
 export function statusBadgeClasse(status) {
   const mapa = {
