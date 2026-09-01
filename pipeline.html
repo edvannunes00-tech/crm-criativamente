@@ -6,6 +6,21 @@
   <title>Pipeline — CRM Criativamente</title>
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .kanban-scroll { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 16px; }
+    .kanban-col { flex: 0 0 260px; background: var(--near-black); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; max-height: calc(100vh - 220px); }
+    .kanban-col-header { padding: 12px 14px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; display: flex; justify-content: space-between; }
+    .kanban-col-body { padding: 10px; overflow-y: auto; flex: 1; min-height: 60px; }
+    .kanban-col-body.drag-over { background: rgba(156,255,25,0.06); }
+    .kanban-card { background: var(--black); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; cursor: grab; font-size: 13px; }
+    .kanban-card:active { cursor: grabbing; }
+    .kanban-card .titulo { font-weight: 600; margin-bottom: 4px; }
+    .kanban-card .contato { color: var(--gray-1); font-size: 12px; }
+    .kanban-card .valor { font-family: var(--font-mono); font-size: 12px; color: var(--accent); margin-top: 6px; }
+    .view-toggle { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; }
+    .view-toggle button { background: transparent; border: none; color: var(--gray-2); padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .view-toggle button.active { background: var(--accent); color: var(--accent-ink); }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -13,20 +28,334 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <div class="card">
-          <div class="empty-state">
-            <div class="icon">🚧</div>
-            <p><strong>Pipeline</strong> ainda está sendo construído.</p>
-            <p style="font-size:12.5px;">Essa tela faz parte da Fase 8B, que está sendo implementada em camadas — a fundação (login, navegação, permissões, Dashboard) já está no ar.</p>
+
+        <div class="filter-bar">
+          <div class="view-toggle">
+            <button class="active" id="btnViewKanban">Kanban</button>
+            <button id="btnViewTabela">Tabela</button>
           </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary hidden" id="btnNovaOportunidade">+ Nova Oportunidade</button>
         </div>
+
+        <div id="areaKanban"><div class="skeleton" style="height:400px;"></div></div>
+        <div id="areaTabela" class="hidden"></div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Nova Oportunidade -->
+  <div id="modalOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:460px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Nova Oportunidade</span>
+        <button class="btn-ghost" id="btnFecharModal">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalErro"></p>
+      <form id="formNovaOportunidade">
+        <div class="field">
+          <label class="mono-label">Contato *</label>
+          <input type="text" id="fBuscaContato" placeholder="Digite o nome ou WhatsApp..." autocomplete="off" />
+          <div id="listaContatos" style="border:1px solid var(--line); border-top:none; max-height:160px; overflow-y:auto;"></div>
+          <input type="hidden" id="fContatoId" />
+          <div id="contatoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
+        </div>
+        <div class="field">
+          <label class="mono-label">Título *</label>
+          <input type="text" id="fTitulo" required />
+        </div>
+        <div class="field">
+          <label class="mono-label">Valor estimado</label>
+          <input type="text" id="fValor" placeholder="0,00" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarOportunidade">Criar Oportunidade</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Criar Projeto? -->
+  <div id="modalProjetoOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:420px; text-align:center;">
+      <div style="font-size:18px; font-weight:800; margin-bottom:8px;">Venda ganha! 🎉</div>
+      <p class="text-muted" style="font-size:13.5px; margin-bottom:20px;">Esta venda gera um projeto agora?</p>
+      <div id="templateEscolha" class="mb-4" style="text-align:left;"></div>
+      <div class="flex gap-3">
+        <button class="btn btn-secondary" style="flex:1;" id="btnNaoCriarProjeto">Não criar agora</button>
+        <button class="btn btn-primary" style="flex:1;" id="btnSimCriarProjeto">Sim, criar projeto</button>
       </div>
     </div>
   </div>
 
   <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    await initPage({ paginaAtual: 'pipeline.html', breadcrumb: 'CRM / Pipeline', title: 'Pipeline' });
+    import { podeFazer } from '/src/lib/session.js';
+    import { formatarMoeda, escapeHtml, exibirTelefone } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'pipeline.html', breadcrumb: 'CRM / Pipeline', title: 'Pipeline' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeCriar = podeFazer(perm, 'pipeline', 'criar') || podeFazer(perm, 'oportunidades', 'criar');
+    if (podeCriar) document.getElementById('btnNovaOportunidade').classList.remove('hidden');
+
+    let etapas = [];
+    let oportunidades = [];
+    let etapaGanhoId = null;
+
+    async function carregarEtapas() {
+      const { data, error } = await supabase.from('pipeline_etapas').select('*').eq('empresa_id', empresaId).order('ordem');
+      if (error) { await handleQueryError(error); return; }
+      etapas = data || [];
+      const ganho = etapas.find((e) => e.is_ganho);
+      etapaGanhoId = ganho ? ganho.id : null;
+    }
+
+    async function carregarOportunidades() {
+      const { data, error } = await supabase
+        .from('oportunidades')
+        .select('id, titulo, valor_final, valor_estimado, etapa_id, contato_id, contatos(nome, whatsapp)')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        document.getElementById('areaKanban').innerHTML = `<div class="error-state"><p>Não foi possível carregar o pipeline agora.</p></div>`;
+        return;
+      }
+      oportunidades = data || [];
+      renderKanban();
+      renderTabela();
+    }
+
+    function cardHtml(o) {
+      const contato = o.contatos || {};
+      const valor = o.valor_final ?? o.valor_estimado;
+      return `
+        <div class="kanban-card" draggable="true" data-id="${o.id}">
+          <div class="titulo">${escapeHtml(o.titulo)}</div>
+          <div class="contato">${escapeHtml(contato.nome || '—')}</div>
+          ${valor ? `<div class="valor">${formatarMoeda(valor)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function renderKanban() {
+      const el = document.getElementById('areaKanban');
+      if (etapas.length === 0) {
+        el.innerHTML = `<div class="empty-state"><p>Nenhuma etapa de pipeline configurada ainda.</p></div>`;
+        return;
+      }
+      el.innerHTML = `
+        <div class="kanban-scroll">
+          ${etapas.map((etapa) => {
+            const desta = oportunidades.filter((o) => o.etapa_id === etapa.id);
+            const total = desta.reduce((s, o) => s + Number(o.valor_final ?? o.valor_estimado ?? 0), 0);
+            return `
+              <div class="kanban-col">
+                <div class="kanban-col-header">
+                  <span>${escapeHtml(etapa.nome)} (${desta.length})</span>
+                  <span class="text-muted">${total > 0 ? formatarMoeda(total) : ''}</span>
+                </div>
+                <div class="kanban-col-body" data-etapa-id="${etapa.id}">
+                  ${desta.map(cardHtml).join('') || '<div class="text-muted" style="font-size:12px; padding:8px;">Vazio</div>'}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+      ativarDragDrop();
+      ativarClickCard();
+    }
+
+    function renderTabela() {
+      const el = document.getElementById('areaTabela');
+      if (oportunidades.length === 0) {
+        el.innerHTML = `<div class="empty-state"><p>Nenhuma oportunidade ainda.</p></div>`;
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Título</th><th>Contato</th><th>Etapa</th><th>Valor</th></tr></thead>
+            <tbody>
+              ${oportunidades.map((o) => {
+                const etapa = etapas.find((e) => e.id === o.etapa_id) || {};
+                const contato = o.contatos || {};
+                return `
+                  <tr data-id="${o.id}">
+                    <td class="cell-primary">${escapeHtml(o.titulo)}</td>
+                    <td>${escapeHtml(contato.nome || '—')}</td>
+                    <td><span class="badge dot-info"><span class="dot"></span>${escapeHtml(etapa.nome || '—')}</span></td>
+                    <td>${formatarMoeda(o.valor_final ?? o.valor_estimado)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      el.querySelectorAll('tbody tr').forEach((tr) => {
+        tr.addEventListener('click', () => { window.location.href = `/ficha-oportunidade.html?id=${tr.dataset.id}`; });
+      });
+    }
+
+    function ativarClickCard() {
+      document.querySelectorAll('.kanban-card').forEach((card) => {
+        card.addEventListener('click', () => {
+          window.location.href = `/ficha-oportunidade.html?id=${card.dataset.id}`;
+        });
+      });
+    }
+
+    function ativarDragDrop() {
+      let idArrastando = null;
+
+      document.querySelectorAll('.kanban-card').forEach((card) => {
+        card.addEventListener('dragstart', () => { idArrastando = card.dataset.id; });
+      });
+
+      document.querySelectorAll('.kanban-col-body').forEach((col) => {
+        col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drag-over'); });
+        col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+        col.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          col.classList.remove('drag-over');
+          if (!idArrastando) return;
+          const novaEtapaId = col.dataset.etapaId;
+          await moverEtapa(idArrastando, novaEtapaId);
+        });
+      });
+    }
+
+    async function moverEtapa(oportunidadeId, novaEtapaId) {
+      const { error } = await supabase.from('oportunidades').update({ etapa_id: novaEtapaId }).eq('id', oportunidadeId);
+      if (error) {
+        alert('Não foi possível mover essa oportunidade. Tente novamente.');
+        return;
+      }
+      if (novaEtapaId === etapaGanhoId) {
+        abrirModalProjeto(oportunidadeId);
+      }
+      await carregarOportunidades();
+    }
+
+    // ---------------- TOGGLE VIEW ----------------
+    document.getElementById('btnViewKanban').addEventListener('click', () => {
+      document.getElementById('btnViewKanban').classList.add('active');
+      document.getElementById('btnViewTabela').classList.remove('active');
+      document.getElementById('areaKanban').classList.remove('hidden');
+      document.getElementById('areaTabela').classList.add('hidden');
+    });
+    document.getElementById('btnViewTabela').addEventListener('click', () => {
+      document.getElementById('btnViewTabela').classList.add('active');
+      document.getElementById('btnViewKanban').classList.remove('active');
+      document.getElementById('areaTabela').classList.remove('hidden');
+      document.getElementById('areaKanban').classList.add('hidden');
+    });
+
+    // ---------------- MODAL NOVA OPORTUNIDADE ----------------
+    const overlay = document.getElementById('modalOverlay');
+    document.getElementById('btnNovaOportunidade').addEventListener('click', () => overlay.classList.remove('hidden'));
+    document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+    document.getElementById('fBuscaContato').addEventListener('input', async (e) => {
+      const termo = e.target.value.trim();
+      const lista = document.getElementById('listaContatos');
+      if (termo.length < 2) { lista.innerHTML = ''; return; }
+      const { data } = await supabase.from('contatos').select('id, nome, whatsapp').or(`nome.ilike.%${termo}%,whatsapp.ilike.%${termo}%`).limit(8);
+      lista.innerHTML = (data || []).map((c) => `
+        <div class="contato-opcao" data-id="${c.id}" data-nome="${escapeHtml(c.nome)}" style="padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line);">
+          ${escapeHtml(c.nome)} <span class="text-muted">${escapeHtml(exibirTelefone(c.whatsapp))}</span>
+        </div>
+      `).join('');
+      lista.querySelectorAll('.contato-opcao').forEach((op) => {
+        op.addEventListener('click', () => {
+          document.getElementById('fContatoId').value = op.dataset.id;
+          document.getElementById('contatoSelecionado').textContent = `Selecionado: ${op.dataset.nome}`;
+          document.getElementById('fBuscaContato').value = op.dataset.nome;
+          lista.innerHTML = '';
+        });
+      });
+    });
+
+    document.getElementById('formNovaOportunidade').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalErro');
+      erroBox.classList.add('hidden');
+      const contatoId = document.getElementById('fContatoId').value;
+      if (!contatoId) {
+        erroBox.textContent = 'Selecione um contato da lista.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+      const btn = document.getElementById('btnSalvarOportunidade');
+      btn.disabled = true; btn.textContent = 'Criando...';
+
+      const primeiraEtapa = etapas.find((e) => !e.is_ganho && !e.is_perdido);
+      const valorTexto = document.getElementById('fValor').value.replace(/\./g, '').replace(',', '.');
+
+      const payload = {
+        empresa_id: empresaId,
+        contato_id: contatoId,
+        titulo: document.getElementById('fTitulo').value.trim(),
+        valor_estimado: valorTexto ? Number(valorTexto) : null,
+        etapa_id: primeiraEtapa ? primeiraEtapa.id : etapas[0].id,
+      };
+
+      const { data, error } = await supabase.from('oportunidades').insert(payload).select('id').single();
+      btn.disabled = false; btn.textContent = 'Criar Oportunidade';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível criar a oportunidade agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      window.location.href = `/ficha-oportunidade.html?id=${data.id}`;
+    });
+
+    // ---------------- MODAL CRIAR PROJETO ----------------
+    const modalProjeto = document.getElementById('modalProjetoOverlay');
+    let oportunidadeGanhaId = null;
+
+    async function abrirModalProjeto(oportunidadeId) {
+      oportunidadeGanhaId = oportunidadeId;
+      const { data: templates } = await supabase.from('projeto_templates').select('id, nome').eq('empresa_id', empresaId);
+      document.getElementById('templateEscolha').innerHTML = `
+        <label class="mono-label">Template</label>
+        <select id="fTemplateProjeto" style="width:100%; background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:10px; color:var(--white); margin-top:6px;">
+          ${(templates || []).map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('')}
+        </select>
+      `;
+      modalProjeto.classList.remove('hidden');
+    }
+
+    document.getElementById('btnNaoCriarProjeto').addEventListener('click', () => { modalProjeto.classList.add('hidden'); });
+
+    document.getElementById('btnSimCriarProjeto').addEventListener('click', async () => {
+      const templateId = document.getElementById('fTemplateProjeto').value;
+      const oport = oportunidades.find((o) => o.id === oportunidadeGanhaId);
+      if (!oport || !templateId) { modalProjeto.classList.add('hidden'); return; }
+
+      const { error } = await supabase.rpc('criar_projeto', {
+        p_empresa_id: empresaId,
+        p_template_id: templateId,
+        p_nome: oport.titulo,
+        p_contato_id: oport.contato_id,
+        p_oportunidade_id: oport.id,
+        p_valor: oport.valor_final,
+      });
+
+      modalProjeto.classList.add('hidden');
+      if (error) {
+        alert('Não foi possível criar o projeto agora. Você pode criar manualmente depois, a partir da ficha da oportunidade.');
+      }
+    });
+
+    await carregarEtapas();
+    await carregarOportunidades();
   </script>
 </body>
 </html>
