@@ -41,6 +41,20 @@ export function whatsappLink(numero) {
   return `https://wa.me/${comPais}`;
 }
 
+// Mesma máscara usada no site institucional: (11) 91234-5678
+export function mascararTelefone(valor) {
+  const d = valor.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : '';
+  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+export function aplicarMascaraTelefone(input) {
+  input.addEventListener('input', () => {
+    input.value = mascararTelefone(input.value);
+  });
+}
+
 // Mapeia status_calculado / status_relacionamento para classe de badge
 export function statusBadgeClasse(status) {
   const mapa = {
