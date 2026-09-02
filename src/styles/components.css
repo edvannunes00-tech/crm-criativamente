@@ -1,5 +1,5 @@
 /* ============================================================
-   COMPONENTES — implementação em CSS puro dos componentes
+   COMPONENTES â€” implementaÃ§Ã£o em CSS puro dos componentes
    definidos no documento de arquitetura (Fase 8A / DESIGN_SYSTEM.md)
    ============================================================ */
 
@@ -123,7 +123,7 @@
 .badge.dot-neutro .dot { background: var(--gray-2); }
 .badge.solid-accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 
-/* -------------------- BOTÕES -------------------- */
+/* -------------------- BOTÃ•ES -------------------- */
 .btn {
   font-family: var(--font-body); font-weight: 700; font-size: 13.5px;
   padding: 10px 18px; border-radius: var(--radius); border: 1px solid transparent;
@@ -147,11 +147,11 @@
   width: 100%; background: transparent; border: 1px solid var(--line-strong);
   border-radius: var(--radius); padding: 10px 12px; color: var(--white);
 }
-/* Regra global de segurança: QUALQUER input/select/textarea da aplicação
+/* Regra global de seguranÃ§a: QUALQUER input/select/textarea da aplicaÃ§Ã£o
    fica com o tema escuro, mesmo se esquecermos de colocar dentro de um
    .field. Sem isso, um campo "solto" herda fundo branco nativo do
-   navegador + texto branco herdado do body = texto invisível (bug real
-   encontrado em produção). */
+   navegador + texto branco herdado do body = texto invisÃ­vel (bug real
+   encontrado em produÃ§Ã£o). */
 input, select, textarea {
   background: transparent;
   color: var(--white);
@@ -166,7 +166,12 @@ input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--accent); }
 .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
 .field-error { border: 1px solid rgba(232,101,74,0.4); background: rgba(232,101,74,0.06); padding: 12px 14px; border-radius: var(--radius); font-size: 13px; color: var(--status-erro); margin-bottom: var(--space-4); }
 
-/* campos de data: ícone do calendário invertido (fica branco, visível no tema escuro) */
+/* BotÃ£o de Ã­cone pequeno (remover, editar) â€” usado em vÃ¡rias telas
+   (Tarefas, Templates, Ficha do Projeto), entÃ£o mora aqui uma vez sÃ³. */
+.btn-icone { background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius); width: 26px; height: 26px; cursor: pointer; color: var(--gray-1); font-size: 12px; flex-shrink: 0; }
+.btn-icone:hover { color: var(--white); border-color: var(--white); }
+
+/* campos de data: Ã­cone do calendÃ¡rio invertido (fica branco, visÃ­vel no tema escuro) */
 .field input[type="date"] { color-scheme: dark; cursor: pointer; }
 .field input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
