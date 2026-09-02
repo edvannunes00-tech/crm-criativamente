@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+        <div id="painelContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initPage } from '/src/lib/pageInit.js';
+    import { montarPainel } from '/src/lib/painelUI.js';
+
+    const { session, perm } = await initPage({ paginaAtual: 'dashboard.html', breadcrumb: 'CRM / Dashboard', title: 'Bom te ver por aqui' });
+
+    // Personalizar é sempre pessoal (cada um monta o próprio painel) — não
+    // depende de permissão de editar dado, só de estar logado.
+    await montarPainel({
+      containerId: 'painelContainer',
+      pagina: 'dashboard',
+      empresaId: perm ? perm.empresa_id : null,
+      usuarioId: session.user.id,
+      meuPapelId: perm ? perm.papel_id : null,
+    });
+  </script>
+</body>
+</html>
