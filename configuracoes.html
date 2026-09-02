@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurações — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .area-bloco { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+    .area-cabecalho { padding: 12px 16px; background: var(--near-black); display: flex; justify-content: space-between; align-items: center; }
+    .area-corpo { padding: 10px 16px; }
+
+    /* cada TEMPLATE é um bloco claramente distinto — borda mais forte,
+       cabeçalho destacado, espaçamento generoso entre um e outro, pra
+       nunca ficar em dúvida onde um termina e o outro começa */
+    .template-card { border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; }
+    .template-card-header { padding: 14px 18px; background: var(--near-black); border-bottom: 1px solid var(--line-strong); display: flex; justify-content: space-between; align-items: center; }
+    .template-nome { font-weight: 800; font-size: 15px; }
+    .etapa-linha { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .etapa-linha:last-child { border-bottom: none; }
+    .btn-icone { background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius); width: 26px; height: 26px; cursor: pointer; color: var(--gray-1); font-size: 12px; }
+    .btn-icone:hover { color: var(--white); border-color: var(--white); }
+    .inline-add { display: flex; gap: 8px; margin-top: 10px; }
+    .inline-add input { flex: 1; }
+    .check-linha { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab active" data-tab="produtos">Produtos &amp; Serviços</button>
+          <button class="tab" data-tab="templates">Templates de Projeto</button>
+          <button class="tab" data-tab="usuarios">Usuários</button>
+          <button class="tab" data-tab="permissoes">Permissões</button>
+          <button class="tab" data-tab="dados">Importar/Exportar</button>
+        </div>
+
+        <div id="tabContent"><div class="skeleton" style="height:300px;"></div></div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Produto -->
+  <div id="modalProdutoOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:460px; max-height:88vh; overflow-y:auto;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label" id="modalProdutoTitulo">Novo Produto</span>
+        <button class="btn-ghost" id="btnFecharModalProduto">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalProdutoErro"></p>
+      <form id="formProduto">
+        <input type="hidden" id="pId" />
+        <div class="field"><label class="mono-label">Nome *</label><input type="text" id="pNome" required /></div>
+        <div class="field"><label class="mono-label">Descrição</label><textarea id="pDescricao" rows="2"></textarea></div>
+        <div class="field"><label class="mono-label">Categoria</label><input type="text" id="pCategoria" /></div>
+        <div class="field"><label class="mono-label">Preço padrão</label><input type="text" id="pPreco" placeholder="0,00" /></div>
+        <div class="check-linha"><input type="checkbox" id="pAtivo" checked /><label for="pAtivo">Ativo</label></div>
+        <div class="check-linha"><input type="checkbox" id="pExigeContrato" checked /><label for="pExigeContrato">Exige contrato</label></div>
+        <div class="check-linha"><input type="checkbox" id="pGeraProjeto" /><label for="pGeraProjeto">Gera projeto por padrão</label></div>
+        <div class="field hidden" id="campoTemplatePadrao">
+          <label class="mono-label">Template padrão</label>
+          <select id="pTemplate"></select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarProduto">Salvar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Convidar Usuário -->
+  <div id="modalConviteOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:420px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Convidar Usuário</span>
+        <button class="btn-ghost" id="btnFecharModalConvite">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalConviteErro"></p>
+      <p class="text-muted mb-4" style="font-size:12.5px;">A pessoa recebe um e-mail pra criar a própria senha.</p>
+      <form id="formConvite">
+        <div class="field"><label class="mono-label">E-mail *</label><input type="email" id="cvEmail" required /></div>
+        <div class="field"><label class="mono-label">Papel *</label><select id="cvPapel" required></select></div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnEnviarConvite">Enviar Convite</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Novo Papel -->
+  <div id="modalPapelOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:380px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Novo Papel</span>
+        <button class="btn-ghost" id="btnFecharModalPapel">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalPapelErro"></p>
+      <form id="formPapel">
+        <div class="field"><label class="mono-label">Nome *</label><input type="text" id="plNome" required placeholder="Ex: Suporte" /></div>
+        <div class="field"><label class="mono-label">Descrição</label><input type="text" id="plDescricao" /></div>
+        <button type="submit" class="btn btn-primary btn-block">Criar Papel</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'configuracoes.html', breadcrumb: 'CRM / Configurações', title: 'Configurações' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeCriar = podeFazer(perm, 'configuracoes', 'criar');
+    const podeEditar = podeFazer(perm, 'configuracoes', 'editar');
+
+    // ============================================================
+    // ABA: PRODUTOS & SERVIÇOS
+    // ============================================================
+    async function abaProdutos() {
+      const { data, error } = await supabase.from('produtos_servicos').select('*, projeto_templates(nome)').order('nome');
+      if (error) {
+        if (await handleQueryError(error)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar os produtos agora.</p></div>`;
+      }
+
+      const tabela = (!data || data.length === 0)
+        ? `<div class="empty-state"><p>Nenhum produto cadastrado ainda.</p></div>`
+        : `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Nome</th><th>Categoria</th><th>Preço padrão</th><th>Status</th><th>Gera projeto</th></tr></thead>
+            <tbody>
+              ${data.map((p) => `
+                <tr data-id="${p.id}" class="linha-produto">
+                  <td class="cell-primary">${escapeHtml(p.nome)}</td>
+                  <td>${escapeHtml(p.categoria || '—')}</td>
+                  <td>${p.preco_padrao != null ? formatarMoeda(p.preco_padrao) : '—'}</td>
+                  <td><span class="badge ${p.ativo ? 'dot-sucesso' : 'dot-neutro'}"><span class="dot"></span>${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                  <td class="cell-muted">${p.gera_projeto_por_padrao ? (escapeHtml((p.projeto_templates && p.projeto_templates.nome) || 'Sim')) : 'Não'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+        `;
+
+      return `
+        <div class="filter-bar">
+          <div class="spacer"></div>
+          ${podeCriar ? `<button class="btn btn-primary" id="btnNovoProduto">+ Novo Produto</button>` : ''}
+        </div>
+        ${tabela}
+      `;
+    }
+
+    function ativarInteracoesProdutos(container) {
+      const btnNovo = container.querySelector('#btnNovoProduto');
+      if (btnNovo) btnNovo.addEventListener('click', () => abrirModalProduto(null));
+
+      container.querySelectorAll('.linha-produto').forEach((tr) => {
+        if (!podeEditar) return;
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => abrirModalProduto(tr.dataset.id));
+      });
+    }
+
+    async function abrirModalProduto(produtoId) {
+      const modal = document.getElementById('modalProdutoOverlay');
+      const { data: templates } = await supabase.from('projeto_templates').select('id, nome').eq('empresa_id', empresaId);
+      document.getElementById('pTemplate').innerHTML = (templates || []).map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('');
+
+      document.getElementById('formProduto').reset();
+      document.getElementById('modalProdutoErro').classList.add('hidden');
+      document.getElementById('campoTemplatePadrao').classList.add('hidden');
+
+      if (produtoId) {
+        document.getElementById('modalProdutoTitulo').textContent = 'Editar Produto';
+        const { data: p } = await supabase.from('produtos_servicos').select('*').eq('id', produtoId).maybeSingle();
+        if (p) {
+          document.getElementById('pId').value = p.id;
+          document.getElementById('pNome').value = p.nome;
+          document.getElementById('pDescricao').value = p.descricao || '';
+          document.getElementById('pCategoria').value = p.categoria || '';
+          document.getElementById('pPreco').value = p.preco_padrao != null ? String(p.preco_padrao).replace('.', ',') : '';
+          document.getElementById('pAtivo').checked = p.ativo;
+          document.getElementById('pExigeContrato').checked = p.exige_contrato;
+          document.getElementById('pGeraProjeto').checked = p.gera_projeto_por_padrao;
+          if (p.gera_projeto_por_padrao) {
+            document.getElementById('campoTemplatePadrao').classList.remove('hidden');
+            document.getElementById('pTemplate').value = p.template_projeto_padrao_id || '';
+          }
+        }
+      } else {
+        document.getElementById('modalProdutoTitulo').textContent = 'Novo Produto';
+        document.getElementById('pId').value = '';
+      }
+      modal.classList.remove('hidden');
+    }
+
+    document.getElementById('pGeraProjeto').addEventListener('change', (e) => {
+      document.getElementById('campoTemplatePadrao').classList.toggle('hidden', !e.target.checked);
+    });
+    document.getElementById('btnFecharModalProduto').addEventListener('click', () => document.getElementById('modalProdutoOverlay').classList.add('hidden'));
+    document.getElementById('modalProdutoOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalProdutoOverlay') e.target.classList.add('hidden'); });
+
+    document.getElementById('formProduto').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalProdutoErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarProduto');
+      btn.disabled = true; btn.textContent = 'Salvando...';
+
+      const precoTexto = document.getElementById('pPreco').value.replace(/\./g, '').replace(',', '.');
+      const geraProjeto = document.getElementById('pGeraProjeto').checked;
+
+      const payload = {
+        nome: document.getElementById('pNome').value.trim(),
+        descricao: document.getElementById('pDescricao').value.trim() || null,
+        categoria: document.getElementById('pCategoria').value.trim() || null,
+        preco_padrao: precoTexto ? Number(precoTexto) : null,
+        ativo: document.getElementById('pAtivo').checked,
+        exige_contrato: document.getElementById('pExigeContrato').checked,
+        gera_projeto_por_padrao: geraProjeto,
+        template_projeto_padrao_id: geraProjeto ? (document.getElementById('pTemplate').value || null) : null,
+      };
+
+      const produtoId = document.getElementById('pId').value;
+      const { error } = produtoId
+        ? await supabase.from('produtos_servicos').update(payload).eq('id', produtoId)
+        : await supabase.from('produtos_servicos').insert({ ...payload, empresa_id: empresaId });
+
+      btn.disabled = false; btn.textContent = 'Salvar';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível salvar o produto agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('modalProdutoOverlay').classList.add('hidden');
+      await abrirAba('produtos');
+    });
+
+    // ============================================================
+    // ABA: TEMPLATES DE PROJETO
+    // ============================================================
+    async function abaTemplates() {
+      const { data: templates, error } = await supabase.from('projeto_templates').select('*').eq('empresa_id', empresaId).order('nome');
+      if (error) {
+        if (await handleQueryError(error)) return '';
+        return `<div class="error-state"><p>Não foi possível carregar os templates agora.</p></div>`;
+      }
+
+      const criarNovoHtml = podeCriar ? `<div class="inline-add mb-4"><input type="text" id="novoTemplateNome" placeholder="Nome do novo template" /><button class="btn btn-primary" id="btnCriarTemplate">Criar Template</button></div>` : '';
+
+      if (!templates || templates.length === 0) {
+        return `${criarNovoHtml}<div class="empty-state"><p>Nenhum template de projeto ainda.</p></div>`;
+      }
+
+      const templateIds = templates.map((t) => t.id);
+      const { data: areas } = await supabase.from('projeto_template_areas').select('*').in('template_id', templateIds).order('ordem');
+      const areaIds = (areas || []).map((a) => a.id);
+      const { data: etapas } = await supabase.from('projeto_template_etapas').select('*').in('area_id', areaIds).order('ordem');
+
+      // nomes já usados em QUALQUER template da empresa — reutilizáveis na lista,
+      // em vez de digitar toda vez do zero
+      const nomesAreasExistentes = [...new Set((areas || []).map((a) => a.nome))].sort();
+      const nomesEtapasExistentes = [...new Set((etapas || []).map((e) => e.nome))].sort();
+
+      const blocos = templates.map((tpl, idx) => {
+        const emEdicao = templatesEmEdicao.has(tpl.id);
+        const areasDoTpl = (areas || []).filter((a) => a.template_id === tpl.id);
+
+        return `
+          <div class="template-card" data-template-id="${tpl.id}" style="${idx > 0 ? 'margin-top:28px;' : ''}">
+            <div class="template-card-header">
+              <span class="template-nome">${escapeHtml(tpl.nome)}</span>
+              <div class="flex gap-2 items-center">
+                <span class="cell-muted" style="font-size:12px;">${areasDoTpl.length} área(s)</span>
+                ${podeEditar ? `<button class="btn btn-secondary btn-sm btn-toggle-edicao" data-id="${tpl.id}">${emEdicao ? 'Concluir edição' : 'Editar'}</button>` : ''}
+              </div>
+            </div>
+            <div class="area-corpo">
+              ${areasDoTpl.map((area) => {
+                const etapasDaArea = (etapas || []).filter((e) => e.area_id === area.id);
+                return `
+                  <div class="mb-4" data-area-id="${area.id}">
+                    <div class="flex items-center justify-between">
+                      <strong style="font-size:13px;">${escapeHtml(area.nome)}</strong>
+                      ${emEdicao ? `<button class="btn-icone btn-remover-area" data-id="${area.id}" title="Remover área">✕</button>` : ''}
+                    </div>
+                    ${etapasDaArea.map((et) => `
+                      <div class="etapa-linha">
+                        <span>${escapeHtml(et.nome)}</span>
+                        ${emEdicao ? `<button class="btn-icone btn-remover-etapa" data-id="${et.id}" title="Remover etapa">✕</button>` : ''}
+                      </div>
+                    `).join('') || (emEdicao ? '' : '<div class="text-muted" style="font-size:12px; padding:4px 0;">Sem etapas ainda.</div>')}
+                    ${emEdicao ? comboAdicionar('etapa', area.id, nomesEtapasExistentes, 'area-id') : ''}
+                  </div>
+                `;
+              }).join('') || (emEdicao ? '' : '<div class="text-muted" style="font-size:12.5px;">Nenhuma área cadastrada ainda.</div>')}
+              ${emEdicao ? comboAdicionar('area', tpl.id, nomesAreasExistentes, 'template-id') : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `${criarNovoHtml}${blocos}`;
+    }
+
+    // Combo reutilizável: escolher um nome já usado em outro lugar, ou criar um novo na hora
+    function comboAdicionar(tipo, paiId, nomesExistentes, atributoPai) {
+      const rotulo = tipo === 'area' ? 'área' : 'etapa';
+      return `
+        <div class="inline-add combo-adicionar" data-tipo="${tipo}" data-${atributoPai}="${paiId}">
+          <select class="select-existente">
+            <option value="">Escolher ${rotulo} existente...</option>
+            ${nomesExistentes.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+            <option value="__novo__">+ Criar nova ${rotulo}...</option>
+          </select>
+          <input type="text" class="input-novo hidden" placeholder="Nome da nova ${rotulo}" />
+          <button class="btn btn-secondary btn-sm btn-confirmar-add">Adicionar</button>
+        </div>
+      `;
+    }
+
+    let templatesEmEdicao = new Set();
+
+    function ativarInteracoesTemplates(container) {
+      const btnCriar = container.querySelector('#btnCriarTemplate');
+      if (btnCriar) btnCriar.addEventListener('click', async () => {
+        const nome = document.getElementById('novoTemplateNome').value.trim();
+        if (!nome) return;
+        const { error } = await supabase.from('projeto_templates').insert({ empresa_id: empresaId, nome });
+        if (!error) await abrirAba('templates');
+      });
+
+      container.querySelectorAll('.btn-toggle-edicao').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (templatesEmEdicao.has(btn.dataset.id)) templatesEmEdicao.delete(btn.dataset.id);
+          else templatesEmEdicao.add(btn.dataset.id);
+          abrirAba('templates');
+        });
+      });
+
+      // combo "escolher existente OU criar novo" — usado tanto pra área quanto etapa
+      container.querySelectorAll('.combo-adicionar').forEach((combo) => {
+        const select = combo.querySelector('.select-existente');
+        const input = combo.querySelector('.input-novo');
+        select.addEventListener('change', () => {
+          input.classList.toggle('hidden', select.value !== '__novo__');
+        });
+
+        combo.querySelector('.btn-confirmar-add').addEventListener('click', async () => {
+          const nome = select.value === '__novo__' ? input.value.trim() : select.value;
+          if (!nome) return;
+
+          const tipo = combo.dataset.tipo;
+          if (tipo === 'area') {
+            const templateId = combo.dataset.templateId;
+            const { data: existentes } = await supabase.from('projeto_template_areas').select('id').eq('template_id', templateId);
+            await supabase.from('projeto_template_areas').insert({ template_id: templateId, nome, ordem: (existentes || []).length + 1 });
+          } else {
+            const areaId = combo.dataset.areaId;
+            const { data: existentes } = await supabase.from('projeto_template_etapas').select('id').eq('area_id', areaId);
+            await supabase.from('projeto_template_etapas').insert({ area_id: areaId, nome, ordem: (existentes || []).length + 1 });
+          }
+          await abrirAba('templates');
+        });
+      });
+
+      container.querySelectorAll('.btn-remover-area').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remover esta área e todas as suas etapas do template? Projetos já criados não são afetados.')) return;
+          await supabase.from('projeto_template_areas').delete().eq('id', btn.dataset.id);
+          await abrirAba('templates');
+        });
+      });
+
+      container.querySelectorAll('.btn-remover-etapa').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          await supabase.from('projeto_template_etapas').delete().eq('id', btn.dataset.id);
+          await abrirAba('templates');
+        });
+      });
+    }
+
+    // ============================================================
+    // ABA: USUÁRIOS
+    // ============================================================
+    async function abaUsuarios() {
+      const [{ data: membros, error: e1 }, { data: papeis, error: e2 }, { data: convites }] = await Promise.all([
+        supabase.from('empresa_usuarios').select('id, ativo, papel_id, usuario_id, usuarios(nome), papeis(nome)').eq('empresa_id', empresaId),
+        supabase.from('papeis').select('id, nome').eq('empresa_id', empresaId),
+        supabase.from('convites_usuario').select('id, email, status, created_at, papeis(nome)').eq('empresa_id', empresaId).eq('status', 'pendente'),
+      ]);
+      if (e1 || e2) { if (await handleQueryError(e1 || e2)) return ''; return `<div class="error-state"><p>Não foi possível carregar os usuários agora.</p></div>`; }
+
+      papeisCache = papeis || [];
+
+      const tabelaMembros = (!membros || membros.length === 0)
+        ? `<div class="empty-state"><p>Nenhum usuário nesta empresa ainda.</p></div>`
+        : `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Nome</th><th>Papel</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${membros.map((m) => `
+                <tr>
+                  <td class="cell-primary">${escapeHtml((m.usuarios && m.usuarios.nome) || '(sem nome ainda)')}</td>
+                  <td>
+                    ${podeEditar ? `
+                      <select class="select-papel-usuario" data-id="${m.id}">
+                        ${papeisCache.map((p) => `<option value="${p.id}" ${p.id === m.papel_id ? 'selected' : ''}>${escapeHtml(p.nome)}</option>`).join('')}
+                      </select>
+                    ` : escapeHtml((m.papeis && m.papeis.nome) || '—')}
+                  </td>
+                  <td><span class="badge ${m.ativo ? 'dot-sucesso' : 'dot-neutro'}"><span class="dot"></span>${m.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                  <td>${podeEditar ? `<button class="btn btn-secondary btn-sm btn-toggle-ativo" data-id="${m.id}" data-ativo="${m.ativo}">${m.ativo ? 'Desativar' : 'Reativar'}</button>` : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table></div>
+        `;
+
+      const convitesHtml = (convites && convites.length > 0) ? `
+        <div class="mono-label mb-4" style="margin-top:20px;">Convites pendentes</div>
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>E-mail</th><th>Papel</th><th>Enviado em</th></tr></thead>
+          <tbody>${convites.map((c) => `<tr><td class="cell-primary">${escapeHtml(c.email)}</td><td>${escapeHtml((c.papeis && c.papeis.nome) || '—')}</td><td class="cell-muted">${new Date(c.created_at).toLocaleDateString('pt-BR')}</td></tr>`).join('')}</tbody>
+        </table></div>
+      ` : '';
+
+      return `
+        <div class="filter-bar">
+          <div class="spacer"></div>
+          ${podeFazer(perm, 'usuarios', 'administrar') ? `<button class="btn btn-primary" id="btnConvidarUsuario">+ Convidar Usuário</button>` : ''}
+        </div>
+        ${tabelaMembros}
+        ${convitesHtml}
+      `;
+    }
+
+    let papeisCache = [];
+
+    function ativarInteracoesUsuarios(container) {
+      const btnConvidar = container.querySelector('#btnConvidarUsuario');
+      if (btnConvidar) btnConvidar.addEventListener('click', () => {
+        document.getElementById('cvPapel').innerHTML = papeisCache.map((p) => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('');
+        document.getElementById('formConvite').reset();
+        document.getElementById('modalConviteErro').classList.add('hidden');
+        document.getElementById('modalConviteOverlay').classList.remove('hidden');
+      });
+
+      container.querySelectorAll('.select-papel-usuario').forEach((sel) => {
+        sel.addEventListener('change', async () => {
+          const { error } = await supabase.from('empresa_usuarios').update({ papel_id: sel.value }).eq('id', sel.dataset.id);
+          if (error) alert('Não foi possível trocar o papel agora.');
+        });
+      });
+
+      container.querySelectorAll('.btn-toggle-ativo').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const ativo = btn.dataset.ativo === 'true';
+          const { error } = await supabase.from('empresa_usuarios').update({ ativo: !ativo }).eq('id', btn.dataset.id);
+          if (!error) await abrirAba('usuarios');
+        });
+      });
+    }
+
+    document.getElementById('btnFecharModalConvite').addEventListener('click', () => document.getElementById('modalConviteOverlay').classList.add('hidden'));
+    document.getElementById('modalConviteOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalConviteOverlay') e.target.classList.add('hidden'); });
+
+    document.getElementById('formConvite').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalConviteErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnEnviarConvite');
+      btn.disabled = true; btn.textContent = 'Enviando...';
+
+      const { data, error } = await supabase.functions.invoke('convidar-usuario', {
+        body: { email: document.getElementById('cvEmail').value.trim(), papel_id: document.getElementById('cvPapel').value, empresa_id: empresaId },
+      });
+
+      btn.disabled = false; btn.textContent = 'Enviar Convite';
+
+      if (error || (data && data.error)) {
+        erroBox.textContent = (data && data.error) || 'Não foi possível enviar o convite agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      document.getElementById('modalConviteOverlay').classList.add('hidden');
+      await abrirAba('usuarios');
+    });
+
+    // ============================================================
+    // ABA: PERMISSÕES
+    // ============================================================
+    const ACOES = ['visualizar', 'criar', 'editar', 'excluir', 'exportar', 'administrar'];
+    const FLAGS = ['ver_valor_propria_venda', 'ver_comissao_propria', 'ver_faturamento_total_empresa', 'ver_despesas', 'ver_caixa', 'ver_ebitda', 'ver_lucro'];
+    const FLAG_LABEL = {
+      ver_valor_propria_venda: 'Ver valor da própria venda', ver_comissao_propria: 'Ver própria comissão',
+      ver_faturamento_total_empresa: 'Ver faturamento total da empresa', ver_despesas: 'Ver despesas',
+      ver_caixa: 'Ver caixa', ver_ebitda: 'Ver EBITDA', ver_lucro: 'Ver lucro gerencial',
+    };
+    let papelExpandidoId = null;
+
+    async function abaPermissoes() {
+      const { data: papeis, error } = await supabase.from('papeis').select('*').eq('empresa_id', empresaId).order('nome');
+      if (error) { if (await handleQueryError(error)) return ''; return `<div class="error-state"><p>Não foi possível carregar os papéis agora.</p></div>`; }
+
+      const criarNovoHtml = podeCriar ? `<button class="btn btn-primary mb-4" id="btnNovoPapel">+ Novo Papel</button>` : '';
+
+      if (!papeis || papeis.length === 0) return `${criarNovoHtml}<div class="empty-state"><p>Nenhum papel cadastrado.</p></div>`;
+
+      let gradeHtml = '';
+      if (papelExpandidoId) {
+        const [{ data: modulos }, { data: permissoes }, { data: flags }] = await Promise.all([
+          supabase.from('modulos').select('*').order('ordem'),
+          supabase.from('papel_permissoes').select('*').eq('papel_id', papelExpandidoId),
+          supabase.from('papel_flags_financeiras').select('*').eq('papel_id', papelExpandidoId),
+        ]);
+
+        const permitidoMap = {};
+        (permissoes || []).forEach((p) => { permitidoMap[`${p.modulo_id}:${p.acao}`] = p.permitido; });
+        const flagMap = {};
+        (flags || []).forEach((f) => { flagMap[f.flag] = f.permitido; });
+
+        gradeHtml = `
+          <div class="card mb-4">
+            <div class="mono-label mb-4">Módulos e ações</div>
+            <div class="table-wrap"><table class="data-table">
+              <thead><tr><th>Módulo</th>${ACOES.map((a) => `<th style="text-align:center;">${a}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${(modulos || []).map((mod) => `
+                  <tr>
+                    <td class="cell-primary">${escapeHtml(mod.nome_exibicao)}</td>
+                    ${ACOES.map((acao) => `
+                      <td style="text-align:center;">
+                        <input type="checkbox" class="chk-permissao" data-modulo-id="${mod.id}" data-acao="${acao}" ${permitidoMap[`${mod.id}:${acao}`] ? 'checked' : ''} />
+                      </td>
+                    `).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table></div>
+
+            <div class="mono-label mb-4" style="margin-top:20px;">Flags financeiras (o que este papel pode enxergar)</div>
+            ${FLAGS.map((f) => `
+              <div class="check-linha">
+                <input type="checkbox" class="chk-flag" data-flag="${f}" ${flagMap[f] ? 'checked' : ''} />
+                <label>${FLAG_LABEL[f]}</label>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      return `
+        ${criarNovoHtml}
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Papel</th><th>Descrição</th><th></th></tr></thead>
+          <tbody>
+            ${papeis.map((p) => `
+              <tr>
+                <td class="cell-primary">${escapeHtml(p.nome)}</td>
+                <td class="cell-muted">${escapeHtml(p.descricao || '—')}</td>
+                <td><button class="btn btn-secondary btn-sm btn-expandir-papel" data-id="${p.id}">${papelExpandidoId === p.id ? 'Fechar' : 'Configurar permissões'}</button></td>
+              </tr>
+              ${papelExpandidoId === p.id ? `<tr><td colspan="3">${gradeHtml}</td></tr>` : ''}
+            `).join('')}
+          </tbody>
+        </table></div>
+      `;
+    }
+
+    function ativarInteracoesPermissoes(container) {
+      const btnNovo = container.querySelector('#btnNovoPapel');
+      if (btnNovo) btnNovo.addEventListener('click', () => {
+        document.getElementById('formPapel').reset();
+        document.getElementById('modalPapelErro').classList.add('hidden');
+        document.getElementById('modalPapelOverlay').classList.remove('hidden');
+      });
+
+      container.querySelectorAll('.btn-expandir-papel').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          papelExpandidoId = papelExpandidoId === btn.dataset.id ? null : btn.dataset.id;
+          abrirAba('permissoes');
+        });
+      });
+
+      container.querySelectorAll('.chk-permissao').forEach((chk) => {
+        chk.addEventListener('change', async () => {
+          const { data: existente } = await supabase.from('papel_permissoes').select('id').eq('papel_id', papelExpandidoId).eq('modulo_id', chk.dataset.moduloId).eq('acao', chk.dataset.acao).maybeSingle();
+          if (existente) {
+            await supabase.from('papel_permissoes').update({ permitido: chk.checked }).eq('id', existente.id);
+          } else {
+            await supabase.from('papel_permissoes').insert({ papel_id: papelExpandidoId, modulo_id: chk.dataset.moduloId, acao: chk.dataset.acao, permitido: chk.checked });
+          }
+        });
+      });
+
+      container.querySelectorAll('.chk-flag').forEach((chk) => {
+        chk.addEventListener('change', async () => {
+          const { data: existente } = await supabase.from('papel_flags_financeiras').select('id').eq('papel_id', papelExpandidoId).eq('flag', chk.dataset.flag).maybeSingle();
+          if (existente) {
+            await supabase.from('papel_flags_financeiras').update({ permitido: chk.checked }).eq('id', existente.id);
+          } else {
+            await supabase.from('papel_flags_financeiras').insert({ papel_id: papelExpandidoId, flag: chk.dataset.flag, permitido: chk.checked });
+          }
+        });
+      });
+    }
+
+    document.getElementById('btnFecharModalPapel').addEventListener('click', () => document.getElementById('modalPapelOverlay').classList.add('hidden'));
+    document.getElementById('modalPapelOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalPapelOverlay') e.target.classList.add('hidden'); });
+
+    document.getElementById('formPapel').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalPapelErro');
+      erroBox.classList.add('hidden');
+      const { error } = await supabase.from('papeis').insert({
+        empresa_id: empresaId,
+        nome: document.getElementById('plNome').value.trim(),
+        descricao: document.getElementById('plDescricao').value.trim() || null,
+      });
+      if (error) {
+        erroBox.textContent = 'Não foi possível criar o papel agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+      document.getElementById('modalPapelOverlay').classList.add('hidden');
+      await abrirAba('permissoes');
+    });
+
+    // ============================================================
+    // ABA: IMPORTAR/EXPORTAR
+    // ============================================================
+    function paraCsv(linhas) {
+      if (!linhas || linhas.length === 0) return '';
+      const colunas = Object.keys(linhas[0]);
+      const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      return [colunas.join(','), ...linhas.map((l) => colunas.map((c) => escapar(l[c])).join(','))].join('\n');
+    }
+
+    function baixarCsv(nomeArquivo, linhas) {
+      const csv = paraCsv(linhas);
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = nomeArquivo;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function parseCsvSimples(texto) {
+      const linhas = texto.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (linhas.length === 0) return { colunas: [], registros: [] };
+      const colunas = linhas[0].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+      const registros = linhas.slice(1).map((linha) => {
+        const valores = linha.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+        const obj = {};
+        colunas.forEach((c, i) => { obj[c] = valores[i] ?? ''; });
+        return obj;
+      });
+      return { colunas, registros };
+    }
+
+    let arquivoImportacaoParseado = null;
+
+    async function abaDados() {
+      const podeExportar = podeFazer(perm, 'configuracoes', 'exportar') || podeFazer(perm, 'clientes', 'exportar');
+
+      return `
+        <div class="card mb-4">
+          <div class="mono-label mb-4">Exportar dados</div>
+          <p class="text-muted mb-4" style="font-size:12.5px;">Baixa um CSV com os dados atuais, respeitando o que você tem permissão de ver.</p>
+          ${podeExportar ? `
+            <div class="flex gap-3">
+              <button class="btn btn-secondary" id="btnExportarContatos">Contatos</button>
+              <button class="btn btn-secondary" id="btnExportarOportunidades">Oportunidades</button>
+              <button class="btn btn-secondary" id="btnExportarProjetos">Projetos</button>
+            </div>
+          ` : `<p class="text-muted" style="font-size:12.5px;">Você não tem permissão para exportar dados.</p>`}
+        </div>
+
+        <div class="card">
+          <div class="mono-label mb-4">Importar contatos (CSV)</div>
+          <p class="text-muted mb-4" style="font-size:12.5px;">O arquivo precisa ter uma coluna <strong>nome</strong> e uma coluna <strong>whatsapp</strong>. Nada é gravado até você confirmar no final.</p>
+          ${podeCriar ? `
+            <input type="file" id="inputArquivoCsv" accept=".csv" />
+            <div id="previewImportacao" class="mt-4"></div>
+          ` : `<p class="text-muted" style="font-size:12.5px;">Você não tem permissão para importar dados.</p>`}
+        </div>
+      `;
+    }
+
+    function ativarInteracoesDados(container) {
+      const btnContatos = container.querySelector('#btnExportarContatos');
+      if (btnContatos) btnContatos.addEventListener('click', async () => {
+        const { data, error } = await supabase.rpc('exportar_contatos', { p_empresa_id: empresaId });
+        if (error || !data) { alert('Não foi possível exportar agora.'); return; }
+        baixarCsv('contatos.csv', data);
+      });
+      const btnOportunidades = container.querySelector('#btnExportarOportunidades');
+      if (btnOportunidades) btnOportunidades.addEventListener('click', async () => {
+        const { data, error } = await supabase.rpc('exportar_oportunidades', { p_empresa_id: empresaId });
+        if (error || !data) { alert('Não foi possível exportar agora.'); return; }
+        baixarCsv('oportunidades.csv', data);
+      });
+      const btnProjetos = container.querySelector('#btnExportarProjetos');
+      if (btnProjetos) btnProjetos.addEventListener('click', async () => {
+        const { data, error } = await supabase.rpc('exportar_projetos', { p_empresa_id: empresaId });
+        if (error || !data) { alert('Não foi possível exportar agora.'); return; }
+        baixarCsv('projetos.csv', data);
+      });
+
+      const inputArquivo = container.querySelector('#inputArquivoCsv');
+      if (inputArquivo) inputArquivo.addEventListener('change', async (e) => {
+        const arquivo = e.target.files[0];
+        if (!arquivo) return;
+        const texto = await arquivo.text();
+        const { colunas, registros } = parseCsvSimples(texto);
+        arquivoImportacaoParseado = registros;
+
+        const preview = document.getElementById('previewImportacao');
+        if (!colunas.includes('nome') || !colunas.includes('whatsapp')) {
+          preview.innerHTML = `<div class="field-error">O arquivo precisa ter as colunas "nome" e "whatsapp". Encontradas: ${colunas.join(', ')}</div>`;
+          return;
+        }
+
+        preview.innerHTML = `
+          <p class="text-muted mb-4" style="font-size:12.5px;">${registros.length} linha(s) encontrada(s). Prévia das 5 primeiras:</p>
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr>${colunas.map((c) => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+            <tbody>${registros.slice(0, 5).map((r) => `<tr>${colunas.map((c) => `<td>${escapeHtml(r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table></div>
+          <button class="btn btn-primary mt-4" id="btnConfirmarImportacao">Confirmar e importar ${registros.length} contato(s)</button>
+          <p class="field-error hidden mt-4" id="erroImportacao"></p>
+        `;
+
+        document.getElementById('btnConfirmarImportacao').addEventListener('click', async () => {
+          const btn = document.getElementById('btnConfirmarImportacao');
+          btn.disabled = true; btn.textContent = 'Criando lote...';
+          const erroBox = document.getElementById('erroImportacao');
+          erroBox.classList.add('hidden');
+
+          const { data: lote, error: erroLote } = await supabase.rpc('criar_lote_importacao', { p_empresa_id: empresaId, p_tipo: 'contatos' });
+          if (erroLote) { erroBox.textContent = 'Não foi possível criar o lote.'; erroBox.classList.remove('hidden'); btn.disabled = false; return; }
+
+          const linhas = arquivoImportacaoParseado.map((r, i) => ({ lote_id: lote, numero_linha: i + 1, dados: r }));
+          const { error: erroLinhas } = await supabase.from('importacoes_linhas').insert(linhas);
+          if (erroLinhas) { erroBox.textContent = 'Não foi possível carregar as linhas.'; erroBox.classList.remove('hidden'); btn.disabled = false; return; }
+
+          const { data: validacao, error: erroValidacao } = await supabase.rpc('validar_lote_importacao', { p_lote_id: lote });
+          if (erroValidacao) { erroBox.textContent = 'Não foi possível validar o lote.'; erroBox.classList.remove('hidden'); btn.disabled = false; return; }
+
+          const { error: erroConfirmar } = await supabase.rpc('confirmar_importacao', { p_lote_id: lote });
+          btn.disabled = false;
+
+          if (erroConfirmar) {
+            erroBox.textContent = 'Validação encontrou problemas — nada foi gravado. Confira o arquivo.';
+            erroBox.classList.remove('hidden');
+            return;
+          }
+
+          document.getElementById('previewImportacao').innerHTML = `<div class="empty-state"><div class="icon">✓</div><p>Importação concluída com sucesso.</p></div>`;
+        });
+      });
+    }
+
+    // ============================================================
+    const abas = { produtos: abaProdutos, templates: abaTemplates, usuarios: abaUsuarios, permissoes: abaPermissoes, dados: abaDados };
+    const interacoes = { produtos: ativarInteracoesProdutos, templates: ativarInteracoesTemplates, usuarios: ativarInteracoesUsuarios, permissoes: ativarInteracoesPermissoes, dados: ativarInteracoesDados };
+
+    async function abrirAba(nome) {
+      document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));
+      const content = document.getElementById('tabContent');
+      content.innerHTML = '<div class="skeleton" style="height:300px;"></div>';
+      content.innerHTML = await abas[nome]();
+      interacoes[nome](content);
+    }
+
+    document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
+
+    await abrirAba('produtos');
+  </script>
+</body>
+</html>
