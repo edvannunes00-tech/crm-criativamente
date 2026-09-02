@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ficha da Oportunidade — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .checkup-row { display: flex; gap: 24px; padding: 14px 20px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 24px; background: var(--near-black); flex-wrap: wrap; }
+    .checkup-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .checkup-item .rotulo { color: var(--gray-2); font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div id="cabecalho"><div class="skeleton" style="height:80px;"></div></div>
+        <div class="indicator-grid" id="resumoCards"></div>
+        <div id="checkupRow"></div>
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab active" data-tab="itens">Itens</button>
+          <button class="tab" data-tab="timeline">Timeline</button>
+          <button class="tab" data-tab="financeiro">Financeiro</button>
+          <button class="tab" data-tab="documentos">Documentos</button>
+        </div>
+
+        <div id="tabContent"><div class="skeleton skeleton-row"></div></div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'pipeline.html', breadcrumb: 'CRM / Pipeline / Ficha', title: 'Ficha da Oportunidade' });
+    const podeVerComissao = podeFazer(perm, 'oportunidades', 'visualizar'); // exibição básica; RLS decide o valor de verdade
+    const podeVerFinanceiro = podeFazer(perm, 'financeiro', 'visualizar');
+    const podeExcluirOportunidade = podeFazer(perm, 'oportunidades', 'excluir') || podeFazer(perm, 'pipeline', 'excluir');
+
+    const params = new URLSearchParams(window.location.search);
+    const oportunidadeId = params.get('id');
+    if (!oportunidadeId) {
+      document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Nenhuma oportunidade indicada na URL.</p></div>`;
+      throw new Error('sem id');
+    }
+
+    let oportunidade = null;
+
+    function iconeComercial(d) {
+      if (d.is_ganho) return '🟢';
+      if (d.is_perdido) return '🔴';
+      return '🔵';
+    }
+    function iconeContratual(status) {
+      const mapa = { nao_aplicavel: '⚪', aguardando_contrato: '🟡', enviado: '🟡', aguardando_assinatura: '🟡', assinado: '🟢', cancelado: '🔴' };
+      return mapa[status] || '⚪';
+    }
+    function iconeFinanceiro(status) {
+      const mapa = { 'Recebido integralmente': '🟢', 'Parcialmente recebido': '🟡', 'A receber': '🟡', 'Em atraso': '🔴', 'Não aplicável': '⚪' };
+      return mapa[status] || '⚪';
+    }
+    function iconeOperacional(status) {
+      const mapa = { sem_projeto: '⚪', ativo: '🟢', pausado: '🟡', concluido: '🟢', cancelado: '🔴' };
+      return mapa[status] || '⚪';
+    }
+    const CHECKUP_ICON_GERAL = { 'Verde': '🟢', 'Amarelo': '🟡', 'Vermelho': '🔴', 'Não aplicável': '⚪' };
+
+    async function carregarCabecalho() {
+      const { data, error } = await supabase
+        .from('oportunidades')
+        .select('*, contatos(id, nome, whatsapp), pipeline_etapas(nome, is_ganho, is_perdido)')
+        .eq('id', oportunidadeId)
+        .maybeSingle();
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Não foi possível carregar esta oportunidade.</p></div>`;
+        return;
+      }
+      if (!data) {
+        document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Oportunidade não encontrada — ou você não tem acesso a ela.</p></div>`;
+        return;
+      }
+
+      oportunidade = data;
+      document.getElementById('headerContainer').querySelector('.header-title').textContent = data.titulo;
+
+      const etapa = data.pipeline_etapas || {};
+      const contato = data.contatos || {};
+      const classeEtapa = etapa.is_ganho ? 'dot-sucesso' : etapa.is_perdido ? 'dot-erro' : 'dot-info';
+
+      document.getElementById('cabecalho').innerHTML = `
+        <div class="card" style="margin-bottom:24px;">
+          <div class="flex items-center justify-between">
+            <div>
+              <div style="font-size:20px; font-weight:800;">${escapeHtml(data.titulo)}</div>
+              <div class="text-muted mt-1" style="font-size:13px;">
+                Contato: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome || '—')}</a>
+              </div>
+            </div>
+            <div class="flex gap-2 items-center">
+              <span class="badge ${classeEtapa}"><span class="dot"></span>${escapeHtml(etapa.nome || '—')}</span>
+              ${podeExcluirOportunidade ? `<button class="btn btn-secondary btn-sm" id="btnExcluirOportunidade" style="color:var(--status-erro);">Excluir</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      if (podeExcluirOportunidade) document.getElementById('btnExcluirOportunidade').addEventListener('click', excluirOportunidade);
+
+      document.getElementById('resumoCards').innerHTML = `
+        <div class="indicator-card"><div class="label mono-label">Valor</div><div class="value">${formatarMoeda(data.valor_final ?? data.valor_estimado)}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Comissão</div><div class="value" style="font-size:18px;">${data.valor_comissao != null ? formatarMoeda(data.valor_comissao) : '—'}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Fechamento</div><div class="value" style="font-size:16px;">${data.data_fechamento ? formatarData(data.data_fechamento) : '—'}</div></div>
+      `;
+
+      await carregarCheckup();
+    }
+
+    async function carregarCheckup() {
+      const { data } = await supabase.from('vw_checkup_oportunidade').select('*').eq('oportunidade_id', oportunidadeId).maybeSingle();
+      if (!data) { document.getElementById('checkupRow').innerHTML = ''; return; }
+      document.getElementById('checkupRow').innerHTML = `
+        <div class="checkup-row">
+          <div class="checkup-item"><span class="rotulo">Comercial</span> ${iconeComercial(data)} ${data.status_comercial || '—'}</div>
+          <div class="checkup-item"><span class="rotulo">Contrato</span> ${iconeContratual(data.status_contratual)} ${data.status_contratual || '—'}</div>
+          <div class="checkup-item"><span class="rotulo">Financeiro</span> ${iconeFinanceiro(data.status_financeiro)} ${data.status_financeiro || '—'}</div>
+          <div class="checkup-item"><span class="rotulo">Projeto</span> ${iconeOperacional(data.status_operacional)} ${data.status_operacional || '—'}</div>
+          <div class="checkup-item"><span class="rotulo">Conciliação</span> ${CHECKUP_ICON_GERAL[data.conciliacao_geral] || ''} ${data.conciliacao_geral || '—'}</div>
+        </div>
+      `;
+    }
+
+    const abas = {
+      itens: async () => {
+        const { data, error } = await supabase.from('oportunidade_itens').select('*, produtos_servicos(nome)').eq('oportunidade_id', oportunidadeId);
+        if (error) return `<div class="error-state"><p>Não foi possível carregar os itens.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum item adicionado a esta oportunidade ainda.</p></div>`;
+        return `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Produto/Descrição</th><th>Qtd</th><th>Valor Unit.</th><th>Total</th></tr></thead>
+              <tbody>
+                ${data.map((i) => `
+                  <tr>
+                    <td class="cell-primary">${escapeHtml((i.produtos_servicos && i.produtos_servicos.nome) || i.descricao || '—')}</td>
+                    <td>${i.quantidade}</td>
+                    <td>${formatarMoeda(i.valor_unitario)}</td>
+                    <td>${formatarMoeda(i.valor_total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      },
+
+      timeline: async () => {
+        const { data, error } = await supabase.from('atividades').select('*').eq('oportunidade_id', oportunidadeId).order('created_at', { ascending: false }).limit(50);
+        if (error) return `<div class="error-state"><p>Não foi possível carregar a timeline.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhuma atividade registrada ainda.</p></div>`;
+        return `
+          <div class="card"><div class="timeline">
+            ${data.map((a) => `
+              <div class="timeline-item">
+                <div class="ts">${formatarData(a.created_at, true)}</div>
+                <div class="title">${escapeHtml(a.titulo)}</div>
+                ${a.descricao ? `<div class="desc">${escapeHtml(a.descricao)}</div>` : ''}
+              </div>
+            `).join('')}
+          </div></div>
+        `;
+      },
+
+      financeiro: async () => {
+        if (!podeVerFinanceiro) return `<div class="empty-state"><p>Você não tem permissão para ver os dados financeiros desta oportunidade.</p></div>`;
+        const { data, error } = await supabase.from('recebimentos').select('*, formas_pagamento(nome)').eq('oportunidade_id', oportunidadeId).order('data_prevista');
+        if (error) return `<div class="error-state"><p>Não foi possível carregar os recebimentos.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum recebimento registrado ainda.</p></div>`;
+        return `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Forma</th><th>Parcela</th><th>Valor Bruto</th><th>Líquido</th><th>Status</th><th>Data prevista</th></tr></thead>
+              <tbody>
+                ${data.map((r) => `
+                  <tr>
+                    <td>${escapeHtml((r.formas_pagamento && r.formas_pagamento.nome) || '—')}</td>
+                    <td>${r.numero_parcela}/${r.total_parcelas}</td>
+                    <td>${formatarMoeda(r.valor_bruto)}</td>
+                    <td>${formatarMoeda(r.valor_liquido)}</td>
+                    <td><span class="badge dot-info"><span class="dot"></span>${r.status}</span></td>
+                    <td class="cell-muted">${formatarData(r.data_prevista)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      },
+
+      documentos: async () => {
+        const { data, error } = await supabase.from('documentos').select('*').eq('entidade_tipo', 'oportunidade').eq('entidade_id', oportunidadeId).order('created_at', { ascending: false });
+        if (error) return `<div class="error-state"><p>Não foi possível carregar os documentos.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum documento anexado ainda.</p></div>`;
+        return `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado em</th></tr></thead>
+              <tbody>${data.map((d) => `<tr><td class="cell-primary">${escapeHtml(d.nome_arquivo || '—')}</td><td>${escapeHtml(d.tipo_documento || '—')}</td><td class="cell-muted">${formatarData(d.created_at)}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>
+        `;
+      },
+    };
+
+    async function abrirAba(nome) {
+      document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));
+      const content = document.getElementById('tabContent');
+      content.innerHTML = '<div class="skeleton skeleton-row"></div>';
+      content.innerHTML = await abas[nome]();
+    }
+
+    // ---------------- EXCLUIR OPORTUNIDADE ----------------
+    async function excluirOportunidade() {
+      const { data: recebimentosVinculados } = await supabase.from('recebimentos').select('id').eq('oportunidade_id', oportunidadeId).limit(1);
+      if (recebimentosVinculados && recebimentosVinculados.length > 0) {
+        alert('Esta oportunidade já tem recebimento(s) registrado(s) — excluir apagaria esse histórico financeiro junto. Não é possível excluir.');
+        return;
+      }
+
+      if (!confirm(`Excluir a oportunidade "${oportunidade.titulo}" definitivamente? Essa ação não pode ser desfeita.`)) return;
+
+      const { error } = await supabase.from('oportunidades').delete().eq('id', oportunidadeId);
+      if (error) {
+        alert('Não foi possível excluir agora — provavelmente ela já tem um contrato ou follow-up vinculado, que precisa ser removido primeiro.');
+        return;
+      }
+      window.location.href = '/pipeline.html';
+    }
+
+    document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
+
+    await carregarCabecalho();
+    if (oportunidade) await abrirAba('itens');
+  </script>
+</body>
+</html>
