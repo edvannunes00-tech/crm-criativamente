@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ficha do Projeto — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .progresso-barra { width: 100%; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+    .progresso-barra .fill { height: 100%; background: var(--accent); }
+    .area-bloco { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+    .area-cabecalho { padding: 12px 16px; background: var(--near-black); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .area-cabecalho .nome { font-weight: 700; font-size: 14px; }
+    .area-corpo { padding: 4px 16px 12px; }
+    .area-corpo.fechado { display: none; }
+    .etapa-linha { padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .etapa-linha:last-child { border-bottom: none; }
+    .etapa-topo { display: flex; justify-content: space-between; align-items: center; }
+    .etapa-nome { font-size: 13.5px; font-weight: 600; }
+    .checklist-item { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 16px; font-size: 12.5px; }
+    .checklist-check { width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: 3px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+    .checklist-check.feito { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    .checklist-desc.feito { color: var(--gray-2); text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div id="cabecalho"><div class="skeleton" style="height:80px;"></div></div>
+        <div class="indicator-grid" id="resumoCards"></div>
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab active" data-tab="areas">Áreas &amp; Etapas</button>
+          <button class="tab" data-tab="timeline">Timeline</button>
+          <button class="tab" data-tab="documentos">Documentos</button>
+        </div>
+
+        <div id="tabContent"><div class="skeleton skeleton-row"></div></div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Editar Projeto -->
+  <div id="modalEditarProjetoOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Editar Projeto</span>
+        <button class="btn-ghost" id="btnFecharModalEditarProjeto">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalEditarProjetoErro"></p>
+      <form id="formEditarProjeto">
+        <div class="field"><label class="mono-label">Nome *</label><input type="text" id="epNome" required /></div>
+        <div class="field">
+          <label class="mono-label">Status</label>
+          <select id="epStatus">
+            <option value="ativo">Ativo</option>
+            <option value="pausado">Pausado</option>
+            <option value="concluido">Concluído</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+        <div class="field"><label class="mono-label">Prazo</label><input type="date" id="epPrazo" /></div>
+        <div class="field">
+          <label class="mono-label">Cliente vinculado</label>
+          <input type="text" id="epBuscaContato" placeholder="Deixe vazio pra projeto interno" autocomplete="off" />
+          <div id="epListaContatos" style="border:1px solid var(--line); border-top:none; max-height:140px; overflow-y:auto;"></div>
+          <input type="hidden" id="epContatoId" />
+          <div id="epContatoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarEdicaoProjeto">Salvar alterações</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'projetos.html', breadcrumb: 'CRM / Projetos / Ficha', title: 'Ficha do Projeto' });
+    const podeEditar = podeFazer(perm, 'projetos', 'editar');
+
+    const params = new URLSearchParams(window.location.search);
+    const projetoId = params.get('id');
+    if (!projetoId) {
+      document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Nenhum projeto indicado na URL.</p></div>`;
+      throw new Error('sem id');
+    }
+
+    let projeto = null;
+
+    async function carregarCabecalho() {
+      const { data, error } = await supabase.from('projetos').select('*, contatos(id, nome)').eq('id', projetoId).maybeSingle();
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Não foi possível carregar este projeto.</p></div>`;
+        return;
+      }
+      if (!data) {
+        document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Projeto não encontrado — ou você não tem acesso a ele.</p></div>`;
+        return;
+      }
+
+      projeto = data;
+      document.getElementById('headerContainer').querySelector('.header-title').textContent = data.nome;
+      const contato = data.contatos;
+
+      document.getElementById('cabecalho').innerHTML = `
+        <div class="card" style="margin-bottom:24px;">
+          <div class="flex items-center justify-between">
+            <div>
+              <div style="font-size:20px; font-weight:800;">${escapeHtml(data.nome)}</div>
+              <div class="text-muted mt-1" style="font-size:13px;">
+                ${contato ? `Cliente: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome)}</a>` : 'Projeto interno (sem cliente)'}
+              </div>
+            </div>
+            <span class="badge dot-info"><span class="dot"></span>${escapeHtml(data.status)}</span>
+          </div>
+          ${podeEditar ? `<button class="btn btn-secondary btn-sm mt-4" id="btnEditarProjeto">Editar</button>` : ''}
+        </div>
+      `;
+
+      if (podeEditar) document.getElementById('btnEditarProjeto').addEventListener('click', abrirModalEdicaoProjeto);
+
+      const [{ data: progresso }, { data: margem }] = await Promise.all([
+        supabase.from('vw_projeto_progresso').select('*').eq('projeto_id', projetoId).maybeSingle(),
+        supabase.from('vw_margem_por_projeto').select('*').eq('projeto_id', projetoId).maybeSingle(),
+      ]);
+
+      document.getElementById('resumoCards').innerHTML = `
+        <div class="indicator-card">
+          <div class="label mono-label">Progresso</div>
+          <div class="value">${progresso ? progresso.progresso_percentual : 0}%</div>
+          <div class="progresso-barra"><div class="fill" style="width:${progresso ? progresso.progresso_percentual : 0}%;"></div></div>
+        </div>
+        <div class="indicator-card"><div class="label mono-label">Prazo</div><div class="value" style="font-size:16px;">${data.prazo ? formatarData(data.prazo) : '—'}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Custos diretos</div><div class="value" style="font-size:18px;">${margem ? formatarMoeda(margem.custos_diretos) : '—'}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Margem estimada</div><div class="value" style="font-size:18px;">${margem ? formatarMoeda(margem.margem_estimada) : '—'}</div></div>
+      `;
+    }
+
+    async function carregarArvore() {
+      const { data: areas } = await supabase.from('projeto_areas').select('*').eq('projeto_id', projetoId).order('ordem');
+      if (!areas || areas.length === 0) return `<div class="empty-state"><p>Este projeto ainda não tem áreas configuradas.</p></div>`;
+
+      const areaIds = areas.map((a) => a.id);
+      const { data: etapas } = await supabase.from('projeto_etapas').select('*').in('area_id', areaIds).order('ordem');
+      const etapaIds = (etapas || []).map((e) => e.id);
+      const { data: checklist } = await supabase.from('projeto_checklist_itens').select('*').in('etapa_id', etapaIds).order('ordem');
+
+      const proximoStatus = { pendente: 'em_andamento', em_andamento: 'concluida', concluida: 'concluida' };
+      const statusLabel = { pendente: 'Pendente', em_andamento: 'Em andamento', concluida: 'Concluída' };
+      const areaStatusLabel = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', travado: 'Travado', concluido: 'Concluído' };
+
+      return `
+        ${areas.map((area, idx) => {
+          const etapasDaArea = (etapas || []).filter((e) => e.area_id === area.id);
+          return `
+            <div class="area-bloco">
+              <div class="area-cabecalho" data-toggle="${area.id}">
+                <span class="nome">${escapeHtml(area.nome)}</span>
+                <span class="badge dot-info"><span class="dot"></span>${areaStatusLabel[area.status] || escapeHtml(area.status)}</span>
+              </div>
+              <div class="area-corpo ${idx === 0 ? '' : 'fechado'}" id="corpo-${area.id}">
+                ${etapasDaArea.map((etapa) => {
+                  const itensDaEtapa = (checklist || []).filter((c) => c.etapa_id === etapa.id);
+                  return `
+                    <div class="etapa-linha">
+                      <div class="etapa-topo">
+                        <span class="etapa-nome">${escapeHtml(etapa.nome)}</span>
+                        <div class="flex gap-2 items-center">
+                          <span class="cell-muted" style="font-size:11.5px;">${statusLabel[etapa.status]}</span>
+                          ${podeEditar && etapa.status !== 'concluida' ? `<button class="btn btn-secondary btn-sm btn-avancar" data-id="${etapa.id}" data-novo="${proximoStatus[etapa.status]}">Avançar</button>` : ''}
+                        </div>
+                      </div>
+                      ${itensDaEtapa.map((item) => `
+                        <div class="checklist-item">
+                          <div class="checklist-check ${item.concluido ? 'feito' : ''}" data-id="${item.id}" data-feito="${item.concluido}">${item.concluido ? '✓' : ''}</div>
+                          <span class="checklist-desc ${item.concluido ? 'feito' : ''}">${escapeHtml(item.descricao)}</span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      `;
+    }
+
+    function ativarInteracoesArvore(container) {
+      container.querySelectorAll('.area-cabecalho').forEach((cab) => {
+        cab.addEventListener('click', () => {
+          document.getElementById(`corpo-${cab.dataset.toggle}`).classList.toggle('fechado');
+        });
+      });
+      container.querySelectorAll('.btn-avancar').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const { error } = await supabase.from('projeto_etapas').update({ status: btn.dataset.novo }).eq('id', btn.dataset.id);
+          if (!error) { await abrirAba('areas'); await carregarCabecalho(); }
+        });
+      });
+      container.querySelectorAll('.checklist-check').forEach((chk) => {
+        chk.addEventListener('click', async () => {
+          const feito = chk.dataset.feito === 'true';
+          const { error } = await supabase.from('projeto_checklist_itens').update({ concluido: !feito }).eq('id', chk.dataset.id);
+          if (!error) await abrirAba('areas');
+        });
+      });
+    }
+
+    const abas = {
+      areas: async () => await carregarArvore(),
+
+      timeline: async () => {
+        const { data, error } = await supabase.from('atividades').select('*').eq('projeto_id', projetoId).order('created_at', { ascending: false }).limit(50);
+        if (error) return `<div class="error-state"><p>Não foi possível carregar a timeline.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhuma atividade registrada ainda.</p></div>`;
+        return `
+          <div class="card"><div class="timeline">
+            ${data.map((a) => `
+              <div class="timeline-item">
+                <div class="ts">${formatarData(a.created_at, true)}</div>
+                <div class="title">${escapeHtml(a.titulo)}</div>
+                ${a.descricao ? `<div class="desc">${escapeHtml(a.descricao)}</div>` : ''}
+              </div>
+            `).join('')}
+          </div></div>
+        `;
+      },
+
+      documentos: async () => {
+        const { data, error } = await supabase.from('documentos').select('*').eq('entidade_tipo', 'projeto').eq('entidade_id', projetoId).order('created_at', { ascending: false });
+        if (error) return `<div class="error-state"><p>Não foi possível carregar os documentos.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum documento anexado ainda.</p></div>`;
+        return `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Arquivo</th><th>Tipo</th><th>Enviado em</th></tr></thead>
+            <tbody>${data.map((d) => `<tr><td class="cell-primary">${escapeHtml(d.nome_arquivo || '—')}</td><td>${escapeHtml(d.tipo_documento || '—')}</td><td class="cell-muted">${formatarData(d.created_at)}</td></tr>`).join('')}</tbody>
+          </table></div>
+        `;
+      },
+    };
+
+    async function abrirAba(nome) {
+      document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));
+      const content = document.getElementById('tabContent');
+      content.innerHTML = '<div class="skeleton skeleton-row"></div>';
+      content.innerHTML = await abas[nome]();
+      if (nome === 'areas') ativarInteracoesArvore(content);
+    }
+
+    document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
+
+    // ---------------- EDITAR PROJETO ----------------
+    const overlayEditarProjeto = document.getElementById('modalEditarProjetoOverlay');
+
+    function abrirModalEdicaoProjeto() {
+      document.getElementById('epNome').value = projeto.nome || '';
+      document.getElementById('epStatus').value = projeto.status || 'ativo';
+      document.getElementById('epPrazo').value = projeto.prazo ? projeto.prazo.slice(0, 10) : '';
+      document.getElementById('epContatoId').value = projeto.contato_id || '';
+      document.getElementById('epBuscaContato').value = (projeto.contatos && projeto.contatos.nome) || '';
+      document.getElementById('epContatoSelecionado').textContent = projeto.contatos ? `Selecionado: ${projeto.contatos.nome}` : '';
+      document.getElementById('modalEditarProjetoErro').classList.add('hidden');
+      overlayEditarProjeto.classList.remove('hidden');
+    }
+
+    document.getElementById('btnFecharModalEditarProjeto').addEventListener('click', () => overlayEditarProjeto.classList.add('hidden'));
+    overlayEditarProjeto.addEventListener('click', (e) => { if (e.target === overlayEditarProjeto) overlayEditarProjeto.classList.add('hidden'); });
+
+    document.getElementById('epBuscaContato').addEventListener('input', async (e) => {
+      const termo = e.target.value.trim();
+      const lista = document.getElementById('epListaContatos');
+      if (termo.length < 2) { lista.innerHTML = ''; return; }
+      const { data } = await supabase.from('contatos').select('id, nome').ilike('nome', `%${termo}%`).limit(8);
+      lista.innerHTML = (data || []).map((c) => `<div class="contato-opcao" data-id="${c.id}" data-nome="${escapeHtml(c.nome)}" style="padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line);">${escapeHtml(c.nome)}</div>`).join('');
+      lista.querySelectorAll('.contato-opcao').forEach((op) => {
+        op.addEventListener('click', () => {
+          document.getElementById('epContatoId').value = op.dataset.id;
+          document.getElementById('epContatoSelecionado').textContent = `Selecionado: ${op.dataset.nome}`;
+          document.getElementById('epBuscaContato').value = op.dataset.nome;
+          lista.innerHTML = '';
+        });
+      });
+    });
+
+    document.getElementById('formEditarProjeto').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalEditarProjetoErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarEdicaoProjeto');
+      btn.disabled = true; btn.textContent = 'Salvando...';
+
+      const payload = {
+        nome: document.getElementById('epNome').value.trim(),
+        status: document.getElementById('epStatus').value,
+        prazo: document.getElementById('epPrazo').value || null,
+        contato_id: document.getElementById('epContatoId').value || null,
+      };
+
+      const { error } = await supabase.from('projetos').update(payload).eq('id', projetoId);
+      btn.disabled = false; btn.textContent = 'Salvar alterações';
+
+      if (error) {
+        erroBox.textContent = 'Não foi possível salvar as alterações agora.';
+        erroBox.classList.remove('hidden');
+        return;
+      }
+
+      overlayEditarProjeto.classList.add('hidden');
+      await carregarCabecalho();
+    });
+
+    await carregarCabecalho();
+    if (projeto) await abrirAba('areas');
+  </script>
+</body>
+</html>
