@@ -66,10 +66,16 @@ export function exibirTelefone(numero) {
 // de data da página — chamado automaticamente pelo initPage(), então
 // nenhuma tela precisa lembrar de fazer isso manualmente.
 export function ativarCamposDeData(raiz = document) {
-  raiz.querySelectorAll('input[type="date"]:not([data-picker-ativo])').forEach((input) => {
+  raiz.querySelectorAll('input[type="date"]:not([data-picker-ativo]), input[type="datetime-local"]:not([data-picker-ativo])').forEach((input) => {
     input.dataset.pickerAtivo = '1';
     input.addEventListener('click', () => {
-      if (typeof input.showPicker === 'function') input.showPicker();
+      try {
+        if (typeof input.showPicker === 'function') input.showPicker();
+      } catch (erro) {
+        // Alguns navegadores recusam showPicker() em certas situações
+        // (ex: chamado rápido demais depois de outro). Sem problema —
+        // o ícone nativo do campo continua funcionando normalmente.
+      }
     });
   });
 }
