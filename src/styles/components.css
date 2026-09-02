@@ -171,6 +171,20 @@ input[type="checkbox"] { width: auto; padding: 0; accent-color: var(--accent); }
 .btn-icone { background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius); width: 26px; height: 26px; cursor: pointer; color: var(--gray-1); font-size: 12px; flex-shrink: 0; }
 .btn-icone:hover { color: var(--white); border-color: var(--white); }
 
+/* PainÃ©is personalizÃ¡veis (Dashboard / GestÃ£o) */
+.painel-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+.painel-bloco { grid-column: span 6; border: 1px solid var(--line); border-radius: var(--radius); background: var(--near-black); overflow: hidden; min-height: 140px; }
+.painel-bloco-header { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; }
+.painel-bloco[draggable="true"] .painel-bloco-header { cursor: grab; }
+.painel-bloco-corpo { padding: 14px; min-height: 100px; }
+.painel-bloco-add { display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--gray-2); font-size: 13px; border-style: dashed; min-height: 140px; }
+.painel-bloco-add:hover { color: var(--white); border-color: var(--white); }
+.widget-metricas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+.widget-metrica .label { margin-bottom: 4px; }
+.widget-metrica .value { font-size: 18px; font-weight: 800; }
+.painel-bloco-corpo canvas { max-height: 220px; }
+@media (max-width: 720px) { .painel-bloco { grid-column: span 12 !important; } }
+
 /* campos de data: Ã­cone do calendÃ¡rio invertido (fica branco, visÃ­vel no tema escuro) */
 .field input[type="date"] { color-scheme: dark; cursor: pointer; }
 .field input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
