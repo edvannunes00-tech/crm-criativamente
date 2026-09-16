@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seu contrato — Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    body { background: var(--black); }
+    .publico-shell { max-width: 640px; margin: 0 auto; padding: 32px 20px 80px; }
+    .publico-logo { font-family: var(--font-mono); font-weight: 800; font-size: 18px; margin-bottom: 24px; text-align: center; }
+    .publico-logo .dot { color: var(--accent); }
+    .passo-label { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); text-transform: uppercase; margin-bottom: 8px; }
+    .resumo-linha { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+    .resumo-linha:last-child { border-bottom: none; }
+    .item-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; }
+    .step-hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="publico-shell">
+    <div class="publico-logo">CRIATIVAMENTE<span class="dot">.</span></div>
+    <div id="conteudo"><div class="skeleton" style="height:200px;"></div></div>
+  </div>
+
+  <script type="module">
+    import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
+    import { formatarMoeda } from '/src/lib/format.js';
+
+    const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
+    const hash = window.location.hash.replace('#', '');
+    const params = new URLSearchParams(hash);
+    const token = params.get('t');
+    const conteudo = document.getElementById('conteudo');
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderIndisponivel() {
+      conteudo.innerHTML = `
+        <div class="card">
+          <p style="font-size:15px; line-height:1.6;">Este link não está mais disponível.</p>
+          <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">O acesso pode ter expirado ou o contrato já ter sido finalizado.</p>
+          <p class="text-muted mt-4" style="font-size:13.5px;">Se precisar de uma cópia do contrato, você pode solicitar uma segunda via.</p>
+          <a href="/contrato-segunda-via.html" class="btn btn-primary btn-block mt-4">Solicitar segunda via</a>
+        </div>
+      `;
+    }
+
+    if (!token) {
+      renderIndisponivel();
+    } else {
+      carregar();
+    }
+
+    let dadosContrato = null;
+
+    async function carregar() {
+      try {
+        const resp = await fetch(`${FUNCTION_URL}?t=${encodeURIComponent(token)}`);
+        const body = await resp.json();
+        if (!body.disponivel) { renderIndisponivel(); return; }
+        dadosContrato = body.contrato;
+        renderRevisao();
+      } catch {
+        conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
+      }
+    }
+
+    function renderRevisao() {
+      const c = dadosContrato;
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo 1 de 3 — O que você está contratando</div>
+        <div class="card mb-4">
+          <div style="font-size:17px; font-weight:800; margin-bottom:12px;">${escapeHtml(c.titulo)}</div>
+          ${(c.itens || []).map((i) => `
+            <div class="item-card">
+              <div class="flex items-center justify-between"><span>${escapeHtml(i.descricao)} ${i.quantidade > 1 ? `(x${i.quantidade})` : ''}</span><span style="font-weight:700;">${formatarMoeda(i.valor_total)}</span></div>
+            </div>
+          `).join('')}
+          <div class="mt-4">
+            <div class="resumo-linha"><span>Preço de tabela</span><span>${formatarMoeda(c.valor_tabela_total)}</span></div>
+            <div class="resumo-linha"><span>Desconto</span><span>${formatarMoeda(c.desconto_total)}</span></div>
+            <div class="resumo-linha"><span style="font-weight:800;">Valor negociado</span><span style="font-weight:800;">${formatarMoeda(c.valor_negociado_total)}</span></div>
+          </div>
+          ${c.condicoes_pagamento_texto ? `<div class="mt-4"><span class="mono-label">Condições de pagamento</span><p style="font-size:13.5px; margin-top:4px;">${escapeHtml(c.condicoes_pagamento_texto)}</p></div>` : ''}
+          ${(c.bonus || []).length > 0 ? `<div class="mt-4"><span class="mono-label">Bônus</span><ul style="margin-top:4px; padding-left:18px; font-size:13.5px;">${c.bonus.map((b) => `<li>${escapeHtml(b.descricao)}${b.quantidade ? ` (x${b.quantidade})` : ''}</li>`).join('')}</ul></div>` : ''}
+          ${c.condicoes_especiais ? `<div class="mt-4"><span class="mono-label">Condições especiais</span><p style="font-size:13.5px; margin-top:4px;">${escapeHtml(c.condicoes_especiais)}</p></div>` : ''}
+        </div>
+        <button class="btn btn-primary btn-block" id="btnProsseguirDados">Prosseguir para meus dados</button>
+      `;
+      document.getElementById('btnProsseguirDados').addEventListener('click', renderFormularioDados);
+    }
+
+    function renderFormularioDados() {
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo 2 de 3 — Seus dados</div>
+        <div class="card">
+          <form id="formDados">
+            <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
+            <div class="field"><label class="mono-label">CPF/CNPJ *</label><input type="text" id="dCpfCnpj" required /></div>
+            <div class="field"><label class="mono-label">Telefone *</label><input type="text" id="dTelefone" required /></div>
+            <div class="field"><label class="mono-label">E-mail *</label><input type="email" id="dEmail" required /></div>
+            <div class="field"><label class="mono-label">CEP</label><input type="text" id="dCep" /></div>
+            <div class="field"><label class="mono-label">Logradouro</label><input type="text" id="dLogradouro" /></div>
+            <div class="flex gap-2">
+              <div class="field" style="flex:1;"><label class="mono-label">Número</label><input type="text" id="dNumero" /></div>
+              <div class="field" style="flex:2;"><label class="mono-label">Complemento</label><input type="text" id="dComplemento" /></div>
+            </div>
+            <div class="field"><label class="mono-label">Bairro</label><input type="text" id="dBairro" /></div>
+            <div class="flex gap-2">
+              <div class="field" style="flex:2;"><label class="mono-label">Cidade</label><input type="text" id="dCidade" /></div>
+              <div class="field" style="flex:1;"><label class="mono-label">Estado</label><input type="text" id="dEstado" maxlength="2" /></div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block" id="btnSalvarDados">Revisar e confirmar</button>
+          </form>
+        </div>
+      `;
+      document.getElementById('formDados').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('btnSalvarDados');
+        btn.disabled = true; btn.textContent = 'Salvando...';
+        const dados = {
+          nome_completo: document.getElementById('dNome').value.trim(),
+          cpf_cnpj: document.getElementById('dCpfCnpj').value.trim(),
+          telefone: document.getElementById('dTelefone').value.trim(),
+          email: document.getElementById('dEmail').value.trim(),
+          endereco_cep: document.getElementById('dCep').value.trim() || null,
+          endereco_logradouro: document.getElementById('dLogradouro').value.trim() || null,
+          endereco_numero: document.getElementById('dNumero').value.trim() || null,
+          endereco_complemento: document.getElementById('dComplemento').value.trim() || null,
+          endereco_bairro: document.getElementById('dBairro').value.trim() || null,
+          endereco_cidade: document.getElementById('dCidade').value.trim() || null,
+          endereco_estado: document.getElementById('dEstado').value.trim() || null,
+        };
+        try {
+          const resp = await fetch(FUNCTION_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, acao: 'salvar', dados }),
+          });
+          const body = await resp.json();
+          if (!body.ok) { renderIndisponivel(); return; }
+          renderConfirmacao(dados);
+        } catch {
+          alert('Não foi possível salvar seus dados agora. Tente novamente.');
+          btn.disabled = false; btn.textContent = 'Revisar e confirmar';
+        }
+      });
+    }
+
+    function renderConfirmacao(dados) {
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo 3 de 3 — Confirmação</div>
+        <div class="card">
+          <p style="font-size:14px; margin-bottom:8px;">Revise rapidamente:</p>
+          <div class="resumo-linha"><span>Nome</span><span>${escapeHtml(dados.nome_completo)}</span></div>
+          <div class="resumo-linha"><span>CPF/CNPJ</span><span>${escapeHtml(dados.cpf_cnpj)}</span></div>
+          <div class="resumo-linha"><span>E-mail</span><span>${escapeHtml(dados.email)}</span></div>
+          <div class="resumo-linha"><span>Valor negociado</span><span style="font-weight:800;">${formatarMoeda(dadosContrato.valor_negociado_total)}</span></div>
+          <div class="check-linha mt-4"><input type="checkbox" id="cConfirmo" /><label for="cConfirmo" style="font-size:13.5px;">Confirmo que revisei meus dados e as condições apresentadas neste contrato.</label></div>
+          <button class="btn btn-primary btn-block mt-2" id="btnConfirmar" disabled>Confirmar e continuar</button>
+        </div>
+      `;
+      document.getElementById('cConfirmo').addEventListener('change', (e) => {
+        document.getElementById('btnConfirmar').disabled = !e.target.checked;
+      });
+      document.getElementById('btnConfirmar').addEventListener('click', async () => {
+        const btn = document.getElementById('btnConfirmar');
+        btn.disabled = true; btn.textContent = 'Confirmando...';
+        try {
+          const resp = await fetch(FUNCTION_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, acao: 'confirmar' }),
+          });
+          const body = await resp.json();
+          if (!body.ok) { renderIndisponivel(); return; }
+          conteudo.innerHTML = `
+            <div class="card" style="text-align:center;">
+              <div style="font-size:32px; margin-bottom:12px;">✓</div>
+              <p style="font-size:15px; font-weight:700;">Dados confirmados com sucesso!</p>
+              <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Agora é só aguardar os próximos passos da equipe Criativamente para a formalização da assinatura.</p>
+            </div>
+          `;
+        } catch {
+          alert('Não foi possível confirmar agora. Tente novamente.');
+          btn.disabled = false; btn.textContent = 'Confirmar e continuar';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

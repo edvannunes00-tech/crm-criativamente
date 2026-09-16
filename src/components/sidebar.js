@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: 'Dashboard', href: 'dashboard.html', modulos: ['dashboard'], mobileIcon: '⌂' },
   { label: 'Clientes', href: 'clientes.html', modulos: ['leads', 'clientes'], mobileIcon: '☺' },
   { label: 'Pipeline', href: 'pipeline.html', modulos: ['pipeline', 'oportunidades'], mobileIcon: '◧' },
+  { label: 'Contratos', href: 'contratos.html', modulos: ['contratos'] },
   { label: 'Tarefas', href: 'tarefas.html', modulos: ['tarefas'], mobileIcon: '✓' },
   { label: 'Agenda', href: 'agenda.html', modulos: ['agenda'], mobileIcon: '▦' },
   { label: 'Projetos', href: 'projetos.html', modulos: ['projetos'] },

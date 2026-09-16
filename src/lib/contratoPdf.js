@@ -1,0 +1,182 @@
+// ============================================================
+// Geração do PDF do contrato (client-side, via jsPDF) + upload
+// pro Storage privado existente (bucket documentos-internos) +
+// registro em crm.documentos / crm.contratos_versoes.
+//
+// Roda no navegador, com a sessão autenticada do usuário do CRM —
+// o upload respeita a RLS de storage.objects já existente
+// (documentos_storage_insert: exige permissão 'documentos'/'criar'
+// na empresa do próprio caminho do arquivo). Nenhuma Edge Function
+// nova foi necessária pra isso.
+// ============================================================
+import { supabase } from './supabaseClient.js';
+import { formatarMoeda, formatarData } from './format.js';
+import { CLAUSULAS, montarContextoJuridico } from './contratoTexto.js';
+
+function quebrarLinhas(doc, texto, larguraMax) {
+  return doc.splitTextToSize(texto, larguraMax);
+}
+
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteNomeCompleto, clienteCpfCnpj, versao }) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margem = 48;
+  const largura = doc.internal.pageSize.getWidth() - margem * 2;
+  let y = margem;
+
+  function novaLinha(altura = 14) {
+    y += altura;
+    if (y > doc.internal.pageSize.getHeight() - margem) {
+      doc.addPage();
+      y = margem;
+    }
+  }
+
+  function titulo(texto, tamanho = 13) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(tamanho);
+    doc.text(texto, margem, y);
+    novaLinha(tamanho + 6);
+  }
+
+  function paragrafo(texto, tamanho = 10) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(tamanho);
+    const linhas = quebrarLinhas(doc, texto, largura);
+    linhas.forEach((linha) => {
+      doc.text(linha, margem, y);
+      novaLinha(tamanho + 4);
+    });
+  }
+
+  // ---- Cabeçalho ----
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CONTRATO DE PRESTAÇÃO DE SERVIÇOS', margem, y);
+  novaLinha(20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(90);
+  doc.text(`Contrato nº ${contrato.id.slice(0, 8).toUpperCase()} — versão ${versao} — gerado em ${formatarData(new Date().toISOString())}`, margem, y);
+  doc.setTextColor(0);
+  novaLinha(24);
+
+  // ---- Quadro comercial ----
+  titulo('QUADRO COMERCIAL');
+  paragrafo(`Cliente: ${clienteNomeCompleto}    CPF/CNPJ: ${clienteCpfCnpj || '—'}`);
+  paragrafo(`Título do contrato: ${contrato.titulo}`);
+  novaLinha(4);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Item', margem, y);
+  doc.text('Qtd', margem + 220, y);
+  doc.text('Tabela', margem + 270, y);
+  doc.text('Negociado', margem + 350, y);
+  doc.text('Total', margem + 440, y);
+  novaLinha(14);
+  doc.setFont('helvetica', 'normal');
+  (itens || []).forEach((item) => {
+    doc.text(String(item.descricao || '—').slice(0, 40), margem, y);
+    doc.text(String(item.quantidade), margem + 220, y);
+    doc.text(formatarMoeda(item.valor_tabela_unitario), margem + 270, y);
+    doc.text(formatarMoeda(item.valor_negociado_unitario), margem + 350, y);
+    doc.text(formatarMoeda(item.valor_total), margem + 440, y);
+    novaLinha(14);
+  });
+
+  novaLinha(6);
+  paragrafo(`Valor de tabela: ${formatarMoeda(contrato.valor_tabela_total)}    Desconto: ${formatarMoeda(contrato.desconto_total)}    Valor negociado: ${formatarMoeda(contrato.valor_negociado_total)}`);
+  if (contrato.condicoes_pagamento_texto) paragrafo(`Condições de pagamento: ${contrato.condicoes_pagamento_texto}`);
+
+  if (bonus && bonus.length > 0) {
+    novaLinha(4);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Bônus:', margem, y);
+    novaLinha(14);
+    doc.setFont('helvetica', 'normal');
+    bonus.forEach((b) => {
+      paragrafo(`• ${b.descricao}${b.quantidade ? ` (x${b.quantidade})` : ''}`);
+    });
+  }
+
+  if (contrato.condicoes_especiais) {
+    novaLinha(4);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Condições especiais:', margem, y);
+    novaLinha(14);
+    doc.setFont('helvetica', 'normal');
+    paragrafo(contrato.condicoes_especiais);
+  }
+
+  novaLinha(16);
+
+  // ---- Cláusulas ----
+  const ctx = montarContextoJuridico({ empresaNome, clienteNomeCompleto, clienteCpfCnpj });
+  CLAUSULAS.forEach((c) => {
+    titulo(c.titulo, 11);
+    paragrafo(c.texto(ctx));
+    novaLinha(6);
+  });
+
+  novaLinha(24);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('_________________________________________', margem, y);
+  novaLinha(14);
+  doc.text(`${ctx.contratanteEmpresa} (CONTRATADA)`, margem, y);
+  novaLinha(28);
+  doc.text('_________________________________________', margem, y);
+  novaLinha(14);
+  doc.text(`${clienteNomeCompleto} (CONTRATANTE)`, margem, y);
+
+  return doc.output('blob');
+}
+
+// Faz upload do PDF e registra documento + nova versao do contrato.
+// categoria: 'original' (gerado pelo sistema) ou 'assinado' (upload manual).
+export async function salvarDocumentoContrato({ empresaId, contratoId, blob, categoria, nomeArquivo, usuarioId, motivoSubstituicao }) {
+  const storagePath = `${empresaId}/contratos/${contratoId}/${Date.now()}-${nomeArquivo}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('documentos-internos')
+    .upload(storagePath, blob, { contentType: 'application/pdf', upsert: false });
+  if (uploadError) throw new Error(`Falha ao enviar o arquivo: ${uploadError.message}`);
+
+  const { data: documento, error: docError } = await supabase
+    .from('documentos')
+    .insert({
+      empresa_id: empresaId,
+      entidade_tipo: 'contrato',
+      entidade_id: contratoId,
+      tipo_documento: 'contrato',
+      categoria_documento: categoria,
+      storage_path: storagePath,
+      nome_arquivo: nomeArquivo,
+      uploaded_by: usuarioId,
+    })
+    .select('id')
+    .single();
+  if (docError || !documento) throw new Error(`Falha ao registrar o documento: ${docError?.message || 'erro desconhecido'}`);
+
+  const { data: ultimaVersao } = await supabase
+    .from('contratos_versoes')
+    .select('versao')
+    .eq('contrato_id', contratoId)
+    .order('versao', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const novaVersao = (ultimaVersao?.versao || 0) + 1;
+
+  const { error: versaoError } = await supabase.from('contratos_versoes').insert({
+    contrato_id: contratoId,
+    empresa_id: empresaId,
+    versao: novaVersao,
+    documento_id: documento.id,
+    motivo_substituicao: motivoSubstituicao || null,
+    criado_por: usuarioId,
+  });
+  if (versaoError) throw new Error(`Falha ao registrar a versão do contrato: ${versaoError.message}`);
+
+  return { documentoId: documento.id, versao: novaVersao, storagePath };
+}

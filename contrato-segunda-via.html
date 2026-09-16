@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Segunda via do contrato — Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    body { background: var(--black); }
+    .publico-shell { max-width: 480px; margin: 0 auto; padding: 32px 20px 80px; }
+    .publico-logo { font-family: var(--font-mono); font-weight: 800; font-size: 18px; margin-bottom: 24px; text-align: center; }
+    .publico-logo .dot { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="publico-shell">
+    <div class="publico-logo">CRIATIVAMENTE<span class="dot">.</span></div>
+    <div class="card">
+      <p style="font-size:14px; margin-bottom:16px;">Informe o CPF/CNPJ utilizado no contrato para receber uma cópia por e-mail.</p>
+      <form id="formSegundaVia">
+        <div class="field"><label class="mono-label">CPF/CNPJ *</label><input type="text" id="fCpfCnpj" required /></div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSolicitar">Solicitar segunda via</button>
+      </form>
+      <div id="resultado" class="mt-4"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
+
+    const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-segunda-via`;
+
+    document.getElementById('formSegundaVia').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btnSolicitar');
+      const resultado = document.getElementById('resultado');
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      resultado.innerHTML = '';
+
+      const cpfCnpj = document.getElementById('fCpfCnpj').value.trim();
+
+      try {
+        const resp = await fetch(FUNCTION_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cpf_cnpj: cpfCnpj }),
+        });
+        const body = await resp.json();
+        resultado.innerHTML = `<p style="font-size:13.5px; color:var(--gray-1); line-height:1.6;">${body.mensagem || body.error || 'Solicitação recebida.'}</p>`;
+      } catch {
+        resultado.innerHTML = `<p style="font-size:13.5px; color:var(--gray-1);">Não foi possível processar sua solicitação agora. Tente novamente em instantes.</p>`;
+      } finally {
+        btn.disabled = false; btn.textContent = 'Solicitar segunda via';
+      }
+    });
+  </script>
+</body>
+</html>

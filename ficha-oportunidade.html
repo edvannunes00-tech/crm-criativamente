@@ -110,6 +110,7 @@
             </div>
             <div class="flex gap-2 items-center">
               <span class="badge ${classeEtapa}"><span class="dot"></span>${escapeHtml(etapa.nome || '—')}</span>
+              <span id="btnContratoWrap"></span>
               ${podeExcluirOportunidade ? `<button class="btn btn-secondary btn-sm" id="btnExcluirOportunidade" style="color:var(--status-erro);">Excluir</button>` : ''}
             </div>
           </div>
@@ -117,6 +118,7 @@
       `;
 
       if (podeExcluirOportunidade) document.getElementById('btnExcluirOportunidade').addEventListener('click', excluirOportunidade);
+      await carregarBotaoContrato(contato.id);
 
       document.getElementById('resumoCards').innerHTML = `
         <div class="indicator-card"><div class="label mono-label">Valor</div><div class="value">${formatarMoeda(data.valor_final ?? data.valor_estimado)}</div></div>
@@ -125,6 +127,19 @@
       `;
 
       await carregarCheckup();
+    }
+
+    async function carregarBotaoContrato(contatoId) {
+      const wrap = document.getElementById('btnContratoWrap');
+      if (!wrap) return;
+      const { data: contratoExistente } = await supabase.from('contratos').select('id').eq('oportunidade_id', oportunidadeId).maybeSingle();
+      if (contratoExistente) {
+        wrap.innerHTML = `<a href="/ficha-contrato.html?id=${contratoExistente.id}" class="btn btn-secondary btn-sm">Ver contrato</a>`;
+        return;
+      }
+      if (podeFazer(perm, 'contratos', 'criar')) {
+        wrap.innerHTML = `<a href="/contratos.html?contato_id=${contatoId}&oportunidade_id=${oportunidadeId}" class="btn btn-secondary btn-sm">Gerar contrato</a>`;
+      }
     }
 
     async function carregarCheckup() {

@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ficha do Contrato — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .item-linha { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .item-linha:last-child { border-bottom: none; }
+    .resumo-linha { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
+    .resumo-linha:last-child { border-bottom: none; font-weight: 800; font-size: 15px; }
+    .link-token-box { background: var(--near-black); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px; font-family: var(--font-mono); font-size: 12px; word-break: break-all; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div id="cabecalho"><div class="skeleton" style="height:90px;"></div></div>
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab active" data-tab="comercial">Comercial</button>
+          <button class="tab" data-tab="documento">Documento</button>
+          <button class="tab" data-tab="link">Link Público</button>
+          <button class="tab" data-tab="assinatura">Assinatura</button>
+          <button class="tab" data-tab="timeline">Timeline</button>
+        </div>
+
+        <div id="tabContent"><div class="skeleton skeleton-row"></div></div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+    import { gerarPdfContrato, salvarDocumentoContrato } from '/src/lib/contratoPdf.js';
+    import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
+
+    const { session, perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos / Ficha', title: 'Ficha do Contrato' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const usuarioId = session.user.id;
+    const podeEditar = podeFazer(perm, 'contratos', 'editar');
+    const podeAdministrar = podeFazer(perm, 'contratos', 'administrar');
+    const podeExcluir = podeFazer(perm, 'contratos', 'excluir');
+
+    const params = new URLSearchParams(window.location.search);
+    const contratoId = params.get('id');
+    if (!contratoId) {
+      document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Nenhum contrato indicado na URL.</p></div>`;
+      throw new Error('sem id');
+    }
+
+    const STATUS_LABEL = {
+      rascunho: 'Rascunho', enviado: 'Enviado', aguardando_assinatura: 'Aguardando assinatura',
+      assinado: 'Assinado', validado: 'Validado', cancelado: 'Cancelado',
+    };
+    const STATUS_BADGE = {
+      rascunho: 'dot-neutro', enviado: 'dot-info', aguardando_assinatura: 'dot-info',
+      assinado: 'dot-sucesso', validado: 'dot-sucesso', cancelado: 'dot-erro',
+    };
+
+    let contrato = null;
+    let contato = null;
+    const editavel = () => contrato && podeEditar && contrato.status !== 'validado' && contrato.status !== 'cancelado';
+
+    async function recalcularTotais() {
+      const { data: itens } = await supabase.from('contrato_itens').select('valor_tabela_unitario, valor_negociado_unitario, valor_total, quantidade').eq('contrato_id', contratoId);
+      const lista = itens || [];
+      const valorTabela = lista.reduce((s, i) => s + Number(i.valor_tabela_unitario) * Number(i.quantidade), 0);
+      const valorNegociado = lista.reduce((s, i) => s + Number(i.valor_total || 0), 0);
+      await supabase.from('contratos').update({
+        valor_tabela_total: valorTabela,
+        valor_negociado_total: valorNegociado,
+        desconto_total: valorTabela - valorNegociado,
+      }).eq('id', contratoId);
+    }
+
+    async function carregarCabecalho() {
+      const { data, error } = await supabase.from('contratos').select('*, contatos(id, nome, cpf_cnpj, whatsapp, email)').eq('id', contratoId).maybeSingle();
+      if (error) { if (await handleQueryError(error)) return; document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Não foi possível carregar este contrato.</p></div>`; return; }
+      if (!data) { document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Contrato não encontrado — ou você não tem acesso a ele.</p></div>`; return; }
+
+      contrato = data;
+      contato = data.contatos || {};
+      document.getElementById('headerContainer').querySelector('.header-title').textContent = data.titulo;
+
+      const podeCancelar = (podeEditar || podeAdministrar) && data.status !== 'cancelado';
+      const podeRegistrarEnvio = editavel() && ['rascunho', 'enviado'].includes(data.status);
+
+      document.getElementById('cabecalho').innerHTML = `
+        <div class="card" style="margin-bottom:24px;">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div style="font-size:20px; font-weight:800;">${escapeHtml(data.titulo)}</div>
+              <div class="text-muted mt-1" style="font-size:13px;">Cliente: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome || '—')}</a></div>
+            </div>
+            <div class="flex gap-2 items-center">
+              <span class="badge ${STATUS_BADGE[data.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[data.status] || data.status}</span>
+              ${podeRegistrarEnvio ? `<button class="btn btn-secondary btn-sm" id="btnRegistrarEnvio">Registrar envio</button>` : ''}
+              ${podeCancelar ? `<button class="btn btn-secondary btn-sm" id="btnCancelar" style="color:var(--status-erro);">Cancelar contrato</button>` : ''}
+            </div>
+          </div>
+          <div class="indicator-grid">
+            <div class="indicator-card"><div class="label mono-label">Preço de tabela</div><div class="value" style="font-size:18px;">${formatarMoeda(data.valor_tabela_total)}</div></div>
+            <div class="indicator-card"><div class="label mono-label">Desconto</div><div class="value" style="font-size:18px;">${formatarMoeda(data.desconto_total)}</div></div>
+            <div class="indicator-card"><div class="label mono-label">Valor negociado</div><div class="value">${formatarMoeda(data.valor_negociado_total)}</div></div>
+          </div>
+        </div>
+      `;
+
+      if (podeCancelar) document.getElementById('btnCancelar').addEventListener('click', cancelarContrato);
+      if (podeRegistrarEnvio) document.getElementById('btnRegistrarEnvio').addEventListener('click', registrarEnvio);
+    }
+
+    async function cancelarContrato() {
+      const motivo = prompt('Motivo do cancelamento (opcional):') || null;
+      if (!confirm('Cancelar este contrato? Essa ação altera o status para "Cancelado".')) return;
+      const { error } = await supabase.from('contratos').update({ status: 'cancelado', motivo_cancelamento: motivo, cancelado_por: usuarioId, cancelado_em: new Date().toISOString() }).eq('id', contratoId);
+      if (error) { alert('Não foi possível cancelar: ' + error.message); return; }
+      await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'contrato_cancelado', titulo: 'Contrato cancelado', usuario_id: usuarioId, descricao: motivo });
+      await carregarCabecalho();
+      await abrirAba(document.querySelector('#tabsNav .tab.active').dataset.tab);
+    }
+
+    async function registrarEnvio() {
+      const canal = prompt('Canal de envio: whatsapp, email, ambos ou outro?', 'whatsapp');
+      if (!canal) return;
+      const destinatario = prompt('Destinatário (opcional):') || null;
+      const observacao = prompt('Observação (opcional):') || null;
+      await supabase.from('atividades').insert({
+        empresa_id: empresaId, contrato_id: contratoId, tipo: 'contrato_enviado',
+        titulo: `Contrato enviado (${canal})`, usuario_id: usuarioId,
+        descricao: observacao, metadata: { canal, destinatario },
+      });
+      if (contrato.status === 'rascunho') {
+        await supabase.from('contratos').update({ status: 'enviado' }).eq('id', contratoId);
+      }
+      await carregarCabecalho();
+      await abrirAba('timeline');
+    }
+
+    // ==================== ABA COMERCIAL ====================
+    async function abaComercial() {
+      const [{ data: itens }, { data: bonusLista }, { data: produtos }] = await Promise.all([
+        supabase.from('contrato_itens').select('*, produtos_servicos(nome)').eq('contrato_id', contratoId).order('created_at'),
+        supabase.from('contrato_bonus').select('*').eq('contrato_id', contratoId).order('created_at'),
+        supabase.from('produtos_servicos').select('id, nome, preco_padrao').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
+      ]);
+
+      const podeMexer = editavel();
+
+      const itensHtml = (itens || []).map((i) => `
+        <div class="item-linha">
+          <div style="flex:2;">${escapeHtml((i.produtos_servicos && i.produtos_servicos.nome) || i.descricao || '—')}</div>
+          <div style="flex:1;">Qtd ${i.quantidade}</div>
+          <div style="flex:1;">Tabela ${formatarMoeda(i.valor_tabela_unitario)}</div>
+          <div style="flex:1;">Negociado ${formatarMoeda(i.valor_negociado_unitario)}</div>
+          <div style="flex:1; font-weight:700;">${formatarMoeda(i.valor_total)}</div>
+          ${podeMexer ? `<button class="btn-icone" data-remover-item="${i.id}" title="Remover">✕</button>` : ''}
+        </div>
+      `).join('') || `<div class="empty-state"><p>Nenhum item ainda.</p></div>`;
+
+      const bonusHtml = (bonusLista || []).map((b) => `
+        <div class="item-linha">
+          <div style="flex:3;">${escapeHtml(b.descricao)}${b.quantidade ? ` (x${b.quantidade})` : ''}</div>
+          ${podeMexer ? `<button class="btn-icone" data-remover-bonus="${b.id}" title="Remover">✕</button>` : ''}
+        </div>
+      `).join('') || `<div class="empty-state"><p>Nenhum bônus adicionado.</p></div>`;
+
+      return `
+        <div class="card mb-4">
+          <div class="flex items-center justify-between mb-4"><span class="mono-label">Itens do contrato</span></div>
+          ${itensHtml}
+          ${podeMexer ? `
+            <form id="formNovoItem" class="flex gap-2 mt-4" style="flex-wrap:wrap;">
+              <select id="itProduto" style="flex:2; min-width:160px;"><option value="">Item avulso...</option>${(produtos || []).map((p) => `<option value="${p.id}" data-preco="${p.preco_padrao || 0}">${escapeHtml(p.nome)} — ${formatarMoeda(p.preco_padrao)}</option>`).join('')}</select>
+              <input type="text" id="itDescricao" placeholder="Descrição (se avulso)" style="flex:2; min-width:140px;" />
+              <input type="number" id="itQtd" value="1" min="1" step="1" style="width:70px;" />
+              <input type="text" id="itTabela" placeholder="Vlr. tabela" style="width:100px;" />
+              <input type="text" id="itNegociado" placeholder="Vlr. negociado" style="width:100px;" />
+              <input type="text" id="itDesconto" placeholder="Desconto" value="0" style="width:90px;" />
+              <button type="submit" class="btn btn-primary btn-sm">Adicionar item</button>
+            </form>
+          ` : ''}
+        </div>
+
+        <div class="card mb-4">
+          <div class="flex items-center justify-between mb-4"><span class="mono-label">Bônus</span></div>
+          ${bonusHtml}
+          ${podeMexer ? `
+            <form id="formNovoBonus" class="flex gap-2 mt-4">
+              <input type="text" id="bDescricao" placeholder="Ex: 10 Reels" required style="flex:2;" />
+              <input type="number" id="bQtd" placeholder="Qtd (opcional)" style="width:100px;" />
+              <button type="submit" class="btn btn-secondary btn-sm">Adicionar bônus</button>
+            </form>
+          ` : ''}
+        </div>
+
+        <div class="card mb-4">
+          <div class="mono-label mb-2">Condições de pagamento e observações</div>
+          <div class="field"><label class="mono-label">Condições de pagamento</label><textarea id="cCondicoesPagamento" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_pagamento_texto || '')}</textarea></div>
+          <div class="field"><label class="mono-label">Condições especiais</label><textarea id="cCondicoesEspeciais" rows="3" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea></div>
+          <div class="field"><label class="mono-label">Observações internas</label><textarea id="cObservacoes" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.observacoes || '')}</textarea></div>
+          ${podeMexer ? `<button class="btn btn-primary btn-sm" id="btnSalvarCondicoes">Salvar condições</button>` : ''}
+        </div>
+
+        <div class="card">
+          <div class="mono-label mb-2">Resumo</div>
+          <div class="resumo-linha"><span>Preço de tabela</span><span>${formatarMoeda(contrato.valor_tabela_total)}</span></div>
+          <div class="resumo-linha"><span>Desconto</span><span>${formatarMoeda(contrato.desconto_total)}</span></div>
+          <div class="resumo-linha"><span>Valor negociado</span><span>${formatarMoeda(contrato.valor_negociado_total)}</span></div>
+        </div>
+      `;
+    }
+
+    function ligarEventosComercial() {
+      const formItem = document.getElementById('formNovoItem');
+      if (formItem) {
+        document.getElementById('itProduto').addEventListener('change', (e) => {
+          const opt = e.target.selectedOptions[0];
+          const preco = opt ? opt.dataset.preco : '';
+          if (preco) { document.getElementById('itTabela').value = preco; document.getElementById('itNegociado').value = preco; }
+        });
+        formItem.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const produtoSel = document.getElementById('itProduto');
+          const produtoId = produtoSel.value || null;
+          const nomeProduto = produtoId ? produtoSel.selectedOptions[0].textContent.split(' — ')[0] : null;
+          const descricao = document.getElementById('itDescricao').value.trim() || nomeProduto;
+          const quantidade = Number(document.getElementById('itQtd').value) || 1;
+          const valorTabela = Number(document.getElementById('itTabela').value.replace(',', '.')) || 0;
+          const valorNegociado = Number(document.getElementById('itNegociado').value.replace(',', '.')) || valorTabela;
+          const desconto = Number(document.getElementById('itDesconto').value.replace(',', '.')) || 0;
+          if (!descricao) { alert('Escolha um produto ou informe uma descrição.'); return; }
+          const { error } = await supabase.from('contrato_itens').insert({
+            empresa_id: empresaId, contrato_id: contratoId, produto_id: produtoId, descricao,
+            quantidade, valor_tabela_unitario: valorTabela, valor_negociado_unitario: valorNegociado, desconto_unitario: desconto,
+          });
+          if (error) { alert('Não foi possível adicionar o item: ' + error.message); return; }
+          await recalcularTotais();
+          await carregarCabecalho();
+          await abrirAba('comercial');
+        });
+      }
+
+      document.querySelectorAll('[data-remover-item]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remover este item?')) return;
+          const { error } = await supabase.from('contrato_itens').delete().eq('id', btn.dataset.removerItem);
+          if (error) { alert('Não foi possível remover: ' + error.message); return; }
+          await recalcularTotais();
+          await carregarCabecalho();
+          await abrirAba('comercial');
+        });
+      });
+
+      const formBonus = document.getElementById('formNovoBonus');
+      if (formBonus) {
+        formBonus.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const descricao = document.getElementById('bDescricao').value.trim();
+          const qtd = document.getElementById('bQtd').value ? Number(document.getElementById('bQtd').value) : null;
+          const { error } = await supabase.from('contrato_bonus').insert({ empresa_id: empresaId, contrato_id: contratoId, descricao, quantidade: qtd });
+          if (error) { alert('Não foi possível adicionar o bônus: ' + error.message); return; }
+          await abrirAba('comercial');
+        });
+      }
+
+      document.querySelectorAll('[data-remover-bonus]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remover este bônus?')) return;
+          await supabase.from('contrato_bonus').delete().eq('id', btn.dataset.removerBonus);
+          await abrirAba('comercial');
+        });
+      });
+
+      const btnSalvarCondicoes = document.getElementById('btnSalvarCondicoes');
+      if (btnSalvarCondicoes) {
+        btnSalvarCondicoes.addEventListener('click', async () => {
+          btnSalvarCondicoes.disabled = true; btnSalvarCondicoes.textContent = 'Salvando...';
+          const { error } = await supabase.from('contratos').update({
+            condicoes_pagamento_texto: document.getElementById('cCondicoesPagamento').value.trim() || null,
+            condicoes_especiais: document.getElementById('cCondicoesEspeciais').value.trim() || null,
+            observacoes: document.getElementById('cObservacoes').value.trim() || null,
+          }).eq('id', contratoId);
+          btnSalvarCondicoes.disabled = false; btnSalvarCondicoes.textContent = 'Salvar condições';
+          if (error) { alert('Não foi possível salvar: ' + error.message); return; }
+          await carregarCabecalho();
+        });
+      }
+    }
+
+    // ==================== ABA DOCUMENTO ====================
+    async function abaDocumento() {
+      const { data: versoes } = await supabase
+        .from('contratos_versoes')
+        .select('versao, created_at, motivo_substituicao, documentos(nome_arquivo, categoria_documento, storage_path)')
+        .eq('contrato_id', contratoId)
+        .order('versao', { ascending: false });
+
+      const podeGerar = editavel();
+
+      const versoesHtml = (versoes || []).length === 0
+        ? `<div class="empty-state"><p>Nenhum documento gerado ainda.</p></div>`
+        : `<div class="table-wrap"><table class="data-table"><thead><tr><th>Versão</th><th>Arquivo</th><th>Categoria</th><th>Data</th><th></th></tr></thead><tbody>
+            ${versoes.map((v) => `
+              <tr>
+                <td>v${v.versao}</td>
+                <td class="cell-primary">${escapeHtml((v.documentos && v.documentos.nome_arquivo) || '—')}</td>
+                <td>${escapeHtml((v.documentos && v.documentos.categoria_documento) || '—')}</td>
+                <td class="cell-muted">${formatarData(v.created_at)}</td>
+                <td><button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button></td>
+              </tr>
+            `).join('')}
+          </tbody></table></div>`;
+
+      return `
+        <div class="card mb-4">
+          ${podeGerar ? `<button class="btn btn-primary" id="btnGerarPdf">Gerar documento do contrato (PDF)</button>` : `<p class="text-muted">Contrato ${contrato.status === 'validado' ? 'validado' : 'finalizado'} — documento não pode mais ser gerado automaticamente por aqui.</p>`}
+          <p class="text-muted mt-2" style="font-size:12px;">O PDF é gerado com as cláusulas do contrato-base e o quadro comercial atual, e salvo como uma nova versão no histórico abaixo.</p>
+        </div>
+        <div class="card">
+          <div class="mono-label mb-4">Versões / documentos</div>
+          ${versoesHtml}
+        </div>
+      `;
+    }
+
+    function ligarEventosDocumento() {
+      const btn = document.getElementById('btnGerarPdf');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true; btn.textContent = 'Gerando...';
+          try {
+            const [{ data: itens }, { data: bonusLista }] = await Promise.all([
+              supabase.from('contrato_itens').select('*').eq('contrato_id', contratoId).order('created_at'),
+              supabase.from('contrato_bonus').select('*').eq('contrato_id', contratoId).order('created_at'),
+            ]);
+            const blob = gerarPdfContrato({
+              contrato, itens: itens || [], bonus: bonusLista || [],
+              empresaNome: 'Criativamente', clienteNomeCompleto: contato.nome, clienteCpfCnpj: contato.cpf_cnpj,
+              versao: 1,
+            });
+            await salvarDocumentoContrato({
+              empresaId, contratoId, blob, categoria: 'original',
+              nomeArquivo: `contrato-${contratoId.slice(0, 8)}.pdf`, usuarioId,
+              motivoSubstituicao: 'Documento gerado a partir das condições comerciais atuais',
+            });
+            await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'versao_criada', titulo: 'Documento do contrato gerado', usuario_id: usuarioId });
+            alert('Documento gerado e salvo com sucesso.');
+            await abrirAba('documento');
+          } catch (err) {
+            alert('Falha ao gerar o documento: ' + err.message);
+          } finally {
+            btn.disabled = false; btn.textContent = 'Gerar documento do contrato (PDF)';
+          }
+        });
+      }
+
+      document.querySelectorAll('[data-baixar]').forEach((el) => {
+        el.addEventListener('click', async () => {
+          const path = el.dataset.baixar;
+          if (!path) return;
+          const { data, error } = await supabase.storage.from('documentos-internos').createSignedUrl(path, 300);
+          if (error || !data) { alert('Não foi possível abrir o documento.'); return; }
+          window.open(data.signedUrl, '_blank');
+        });
+      });
+    }
+
+    // ==================== ABA LINK ====================
+    async function abaLink() {
+      const { data: links } = await supabase.from('contrato_links').select('*').eq('contrato_id', contratoId).order('created_at', { ascending: false });
+      const podeGerenciar = podeEditar;
+
+      const LINK_STATUS_BADGE = { ativo: 'dot-info', confirmado: 'dot-sucesso', expirado: 'dot-neutro', revogado: 'dot-erro' };
+
+      const linksHtml = (links || []).length === 0
+        ? `<div class="empty-state"><p>Nenhum link gerado ainda.</p></div>`
+        : `<div class="table-wrap"><table class="data-table"><thead><tr><th>Status</th><th>Criado em</th><th>Expira em</th><th>Acessos</th><th></th></tr></thead><tbody>
+            ${links.map((l) => `
+              <tr>
+                <td><span class="badge ${LINK_STATUS_BADGE[l.status] || 'dot-neutro'}"><span class="dot"></span>${l.status}</span></td>
+                <td class="cell-muted">${formatarData(l.created_at, true)}</td>
+                <td class="cell-muted">${formatarData(l.expires_at, true)}</td>
+                <td>${l.access_count}</td>
+                <td>${podeGerenciar && l.status === 'ativo' ? `<button class="btn-ghost" data-revogar="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Revogar</button>` : ''}</td>
+              </tr>
+            `).join('')}
+          </tbody></table></div>`;
+
+      return `
+        <div class="card mb-4">
+          ${podeGerenciar ? `<button class="btn btn-primary" id="btnGerarLink">Gerar novo link de preenchimento</button>` : ''}
+          <div id="linkGeradoBox"></div>
+        </div>
+        <div class="card"><div class="mono-label mb-4">Links já gerados</div>${linksHtml}</div>
+      `;
+    }
+
+    function ligarEventosLink() {
+      const btn = document.getElementById('btnGerarLink');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true; btn.textContent = 'Gerando...';
+          try {
+            const resultado = await gerarLinkContrato(contratoId, 7);
+            const url = `${window.location.origin}/contrato-publico.html#t=${resultado.token}`;
+            document.getElementById('linkGeradoBox').innerHTML = `
+              <p class="mt-4 text-muted" style="font-size:12.5px;">Copie o link abaixo agora — ele não será mostrado de novo. Expira em ${formatarData(resultado.expires_at, true)}.</p>
+              <div class="link-token-box">${escapeHtml(url)}</div>
+              <button class="btn btn-secondary btn-sm" id="btnCopiarLink">Copiar link</button>
+            `;
+            document.getElementById('btnCopiarLink').addEventListener('click', () => {
+              navigator.clipboard.writeText(url);
+              document.getElementById('btnCopiarLink').textContent = 'Copiado!';
+            });
+            await carregarCabecalho();
+            await abrirAba('link');
+          } catch (err) {
+            alert('Falha ao gerar o link: ' + err.message);
+            btn.disabled = false; btn.textContent = 'Gerar novo link de preenchimento';
+          }
+        });
+      }
+
+      document.querySelectorAll('[data-revogar]').forEach((el) => {
+        el.addEventListener('click', async () => {
+          const motivo = prompt('Motivo da revogação (opcional):') || undefined;
+          if (!confirm('Revogar este link? Ele deixará de funcionar imediatamente.')) return;
+          try {
+            await revogarLinkContrato(el.dataset.revogar, motivo);
+            await abrirAba('link');
+          } catch (err) {
+            alert('Falha ao revogar: ' + err.message);
+          }
+        });
+      });
+    }
+
+    // ==================== ABA ASSINATURA ====================
+    async function abaAssinatura() {
+      const podeRegistrar = podeEditar && ['aguardando_assinatura', 'assinado'].includes(contrato.status);
+      const podeValidar = podeAdministrar && contrato.status === 'assinado';
+
+      return `
+        <div class="card mb-4">
+          <div class="mono-label mb-2">Dados da assinatura</div>
+          <div class="field"><label class="mono-label">Tipo de assinatura</label>
+            <select id="asTipo" ${podeRegistrar ? '' : 'disabled'}>
+              <option value="">—</option>
+              <option value="eletronica" ${contrato.tipo_assinatura === 'eletronica' ? 'selected' : ''}>Eletrônica</option>
+              <option value="fisica" ${contrato.tipo_assinatura === 'fisica' ? 'selected' : ''}>Física</option>
+              <option value="outro" ${contrato.tipo_assinatura === 'outro' ? 'selected' : ''}>Outro</option>
+            </select>
+          </div>
+          <div class="check-linha"><input type="checkbox" id="asCartorio" ${contrato.cartorio_reconhecido ? 'checked' : ''} ${podeRegistrar ? '' : 'disabled'} /><label for="asCartorio">Reconhecimento/autenticação em cartório</label></div>
+          ${podeRegistrar ? `<button class="btn btn-secondary btn-sm" id="btnSalvarAssinatura">Salvar tipo de assinatura</button>` : ''}
+        </div>
+
+        <div class="card mb-4">
+          <div class="mono-label mb-2">Upload do documento assinado</div>
+          ${podeRegistrar ? `
+            <input type="file" id="asArquivo" accept="application/pdf,image/*" />
+            <button class="btn btn-primary btn-sm mt-2" id="btnUploadAssinado">Enviar documento assinado</button>
+          ` : `<p class="text-muted">Disponível quando o contrato estiver aguardando assinatura.</p>`}
+        </div>
+
+        ${podeValidar ? `
+          <div class="card">
+            <div class="mono-label mb-2">Validação</div>
+            <div class="field"><label class="mono-label">Observação da validação</label><textarea id="asObservacaoValidacao" rows="2"></textarea></div>
+            <button class="btn btn-primary" id="btnValidarContrato">Validar contrato</button>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function ligarEventosAssinatura() {
+      const btnSalvarAssinatura = document.getElementById('btnSalvarAssinatura');
+      if (btnSalvarAssinatura) {
+        btnSalvarAssinatura.addEventListener('click', async () => {
+          const tipo = document.getElementById('asTipo').value || null;
+          const cartorio = document.getElementById('asCartorio').checked;
+          const { error } = await supabase.from('contratos').update({ tipo_assinatura: tipo, cartorio_reconhecido: cartorio }).eq('id', contratoId);
+          if (error) { alert('Não foi possível salvar: ' + error.message); return; }
+          await carregarCabecalho();
+        });
+      }
+
+      const btnUpload = document.getElementById('btnUploadAssinado');
+      if (btnUpload) {
+        btnUpload.addEventListener('click', async () => {
+          const input = document.getElementById('asArquivo');
+          const arquivo = input.files[0];
+          if (!arquivo) { alert('Escolha um arquivo primeiro.'); return; }
+          btnUpload.disabled = true; btnUpload.textContent = 'Enviando...';
+          try {
+            await salvarDocumentoContrato({
+              empresaId, contratoId, blob: arquivo, categoria: 'assinado',
+              nomeArquivo: arquivo.name, usuarioId,
+              motivoSubstituicao: 'Upload manual do documento assinado pelo cliente',
+            });
+            if (contrato.status === 'aguardando_assinatura') {
+              await supabase.from('contratos').update({ status: 'assinado' }).eq('id', contratoId);
+            }
+            await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'documento_recebido', titulo: 'Documento assinado recebido/anexado', usuario_id: usuarioId });
+            alert('Documento assinado registrado com sucesso.');
+            await carregarCabecalho();
+            await abrirAba('assinatura');
+          } catch (err) {
+            alert('Falha no upload: ' + err.message);
+          } finally {
+            btnUpload.disabled = false; btnUpload.textContent = 'Enviar documento assinado';
+          }
+        });
+      }
+
+      const btnValidar = document.getElementById('btnValidarContrato');
+      if (btnValidar) {
+        btnValidar.addEventListener('click', async () => {
+          if (!confirm('Validar este contrato? Depois de validado, alterações comerciais exigem permissão de administrador.')) return;
+          const observacao = document.getElementById('asObservacaoValidacao').value.trim() || null;
+          btnValidar.disabled = true; btnValidar.textContent = 'Validando...';
+          const { error } = await supabase.from('contratos').update({
+            status: 'validado', validado_por: usuarioId, validado_em: new Date().toISOString(), observacao_validacao: observacao,
+          }).eq('id', contratoId);
+          if (error) { alert('Não foi possível validar: ' + error.message); btnValidar.disabled = false; btnValidar.textContent = 'Validar contrato'; return; }
+          await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'contrato_validado', titulo: 'Contrato validado', usuario_id: usuarioId, descricao: observacao });
+          alert('Contrato validado com sucesso.');
+          await carregarCabecalho();
+          await abrirAba('assinatura');
+        });
+      }
+    }
+
+    // ==================== ABA TIMELINE ====================
+    async function abaTimeline() {
+      const { data, error } = await supabase.from('atividades').select('*').eq('contrato_id', contratoId).order('created_at', { ascending: false }).limit(100);
+      if (error) return `<div class="error-state"><p>Não foi possível carregar a timeline.</p></div>`;
+      if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum evento registrado ainda.</p></div>`;
+      return `<div class="card"><div class="timeline">
+        ${data.map((a) => `
+          <div class="timeline-item">
+            <div class="ts">${formatarData(a.created_at, true)}</div>
+            <div class="title">${escapeHtml(a.titulo)}</div>
+            ${a.descricao ? `<div class="desc">${escapeHtml(a.descricao)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div></div>`;
+    }
+
+    const abas = {
+      comercial: async () => abaComercial(),
+      documento: async () => abaDocumento(),
+      link: async () => abaLink(),
+      assinatura: async () => abaAssinatura(),
+      timeline: async () => abaTimeline(),
+    };
+    const ligarEventos = { comercial: ligarEventosComercial, documento: ligarEventosDocumento, link: ligarEventosLink, assinatura: ligarEventosAssinatura, timeline: () => {} };
+
+    async function abrirAba(nome) {
+      document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));
+      const content = document.getElementById('tabContent');
+      content.innerHTML = '<div class="skeleton skeleton-row"></div>';
+      content.innerHTML = await abas[nome]();
+      ligarEventos[nome]();
+    }
+
+    document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
+
+    await carregarCabecalho();
+    if (contrato) await abrirAba('comercial');
+  </script>
+</body>
+</html>

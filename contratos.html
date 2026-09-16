@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contratos — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div class="filter-bar">
+          <input type="search" id="busca" placeholder="Buscar por título ou cliente..." />
+          <div class="tabs" id="filtroStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab active" data-status="">Todos</button>
+            <button class="tab" data-status="rascunho">Rascunho</button>
+            <button class="tab" data-status="enviado">Enviado</button>
+            <button class="tab" data-status="aguardando_assinatura">Aguard. assinatura</button>
+            <button class="tab" data-status="assinado">Assinado</button>
+            <button class="tab" data-status="validado">Validado</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary hidden" id="btnNovoContrato">+ Novo Contrato</button>
+        </div>
+
+        <div class="table-wrap" id="tabelaWrap">
+          <div style="padding:16px;">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Novo Contrato -->
+  <div id="modalOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100;">
+    <div class="card" style="width:100%; max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <span class="mono-label">Novo Contrato</span>
+        <button class="btn-ghost" id="btnFecharModal">Fechar</button>
+      </div>
+      <p class="field-error hidden" id="modalErro"></p>
+      <form id="formNovoContrato">
+        <div class="field">
+          <label class="mono-label">Cliente *</label>
+          <select id="fContato" required><option value="">Selecione...</option></select>
+        </div>
+        <div class="field">
+          <label class="mono-label">Oportunidade (opcional)</label>
+          <select id="fOportunidade"><option value="">Nenhuma / avulso</option></select>
+          <p class="text-muted" style="font-size:11.5px; margin-top:4px;">Se escolher uma oportunidade, os itens dela são copiados como ponto de partida (o contrato fica independente a partir daí).</p>
+        </div>
+        <div class="field">
+          <label class="mono-label">Título do contrato *</label>
+          <input type="text" id="fTitulo" required placeholder="Ex: Plano Professional — Fulano de Tal" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarContrato">Criar Contrato</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+
+    const { perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos', title: 'Contratos' });
+    const empresaId = perm ? perm.empresa_id : null;
+    const podeCriar = podeFazer(perm, 'contratos', 'criar');
+    if (podeCriar) document.getElementById('btnNovoContrato').classList.remove('hidden');
+
+    const STATUS_LABEL = {
+      rascunho: 'Rascunho', enviado: 'Enviado', aguardando_assinatura: 'Aguard. assinatura',
+      assinado: 'Assinado', validado: 'Validado', cancelado: 'Cancelado',
+    };
+    const STATUS_BADGE = {
+      rascunho: 'dot-neutro', enviado: 'dot-info', aguardando_assinatura: 'dot-info',
+      assinado: 'dot-sucesso', validado: 'dot-sucesso', cancelado: 'dot-erro',
+    };
+
+    let filtroStatusAtual = '';
+    let termoBusca = '';
+
+    async function carregarLista() {
+      const wrap = document.getElementById('tabelaWrap');
+      let query = supabase
+        .from('contratos')
+        .select('id, titulo, status, valor_negociado_total, created_at, contatos(nome)')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (filtroStatusAtual) query = query.eq('status', filtroStatusAtual);
+      if (termoBusca) query = query.ilike('titulo', `%${termoBusca}%`);
+
+      const { data, error } = await query;
+      if (error) {
+        if (await handleQueryError(error)) return;
+        wrap.innerHTML = `<div class="error-state"><p>Não foi possível carregar os contratos agora.</p></div>`;
+        return;
+      }
+      if (!data || data.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><p>Nenhum contrato encontrado ${termoBusca || filtroStatusAtual ? 'com esse filtro' : 'ainda'}.</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <table class="data-table">
+          <thead><tr><th>Título</th><th>Cliente</th><th>Status</th><th>Valor negociado</th><th>Criado em</th></tr></thead>
+          <tbody>
+            ${data.map((c) => `
+              <tr data-id="${c.id}">
+                <td class="cell-primary">${escapeHtml(c.titulo)}</td>
+                <td>${escapeHtml((c.contatos && c.contatos.nome) || '—')}</td>
+                <td><span class="badge ${STATUS_BADGE[c.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[c.status] || c.status}</span></td>
+                <td>${formatarMoeda(c.valor_negociado_total)}</td>
+                <td class="cell-muted">${formatarData(c.created_at)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      wrap.querySelectorAll('tbody tr').forEach((tr) => {
+        tr.addEventListener('click', () => { window.location.href = `/ficha-contrato.html?id=${tr.dataset.id}`; });
+      });
+    }
+
+    document.getElementById('busca').addEventListener('input', (e) => {
+      termoBusca = e.target.value.trim();
+      clearTimeout(window.__buscaTimeout);
+      window.__buscaTimeout = setTimeout(carregarLista, 300);
+    });
+    document.querySelectorAll('#filtroStatus .tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#filtroStatus .tab').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        filtroStatusAtual = btn.dataset.status;
+        carregarLista();
+      });
+    });
+
+    // ---------------- MODAL NOVO CONTRATO ----------------
+    const overlay = document.getElementById('modalOverlay');
+    const params = new URLSearchParams(window.location.search);
+
+    async function abrirModal() {
+      overlay.classList.remove('hidden');
+      const { data: contatos } = await supabase.from('contatos').select('id, nome').eq('empresa_id', empresaId).order('nome');
+      document.getElementById('fContato').innerHTML = '<option value="">Selecione...</option>' +
+        (contatos || []).map((c) => `<option value="${c.id}">${escapeHtml(c.nome)}</option>`).join('');
+
+      const contatoPreSelecionado = params.get('contato_id');
+      const oportunidadePreSelecionada = params.get('oportunidade_id');
+      if (contatoPreSelecionado) {
+        document.getElementById('fContato').value = contatoPreSelecionado;
+        await carregarOportunidades(contatoPreSelecionado);
+        if (oportunidadePreSelecionada) document.getElementById('fOportunidade').value = oportunidadePreSelecionada;
+      }
+    }
+
+    async function carregarOportunidades(contatoId) {
+      const sel = document.getElementById('fOportunidade');
+      if (!contatoId) { sel.innerHTML = '<option value="">Nenhuma / avulso</option>'; return; }
+      const { data } = await supabase.from('oportunidades').select('id, titulo').eq('contato_id', contatoId).order('created_at', { ascending: false });
+      sel.innerHTML = '<option value="">Nenhuma / avulso</option>' +
+        (data || []).map((o) => `<option value="${o.id}">${escapeHtml(o.titulo)}</option>`).join('');
+    }
+
+    document.getElementById('fContato').addEventListener('change', (e) => carregarOportunidades(e.target.value));
+
+    if (podeCriar && (params.get('contato_id') || params.get('novo') === '1')) abrirModal();
+    document.getElementById('btnNovoContrato').addEventListener('click', abrirModal);
+    document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+    document.getElementById('formNovoContrato').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroBox = document.getElementById('modalErro');
+      erroBox.classList.add('hidden');
+      const btn = document.getElementById('btnSalvarContrato');
+      btn.disabled = true; btn.textContent = 'Criando...';
+
+      const contatoId = document.getElementById('fContato').value;
+      const oportunidadeId = document.getElementById('fOportunidade').value || null;
+      const titulo = document.getElementById('fTitulo').value.trim();
+
+      const { data: contrato, error } = await supabase
+        .from('contratos')
+        .insert({ empresa_id: empresaId, contato_id: contatoId, oportunidade_id: oportunidadeId, titulo, status: 'rascunho' })
+        .select('id')
+        .single();
+
+      if (error || !contrato) {
+        erroBox.textContent = 'Não foi possível criar o contrato. Confira os dados e tente novamente.';
+        erroBox.classList.remove('hidden');
+        btn.disabled = false; btn.textContent = 'Criar Contrato';
+        return;
+      }
+
+      // Copia os itens da oportunidade, se houver — ponto de partida
+      // independente (snapshot próprio, igual ao resto da arquitetura).
+      if (oportunidadeId) {
+        const { data: itensOportunidade } = await supabase
+          .from('oportunidade_itens')
+          .select('produto_id, descricao, quantidade, valor_unitario, desconto')
+          .eq('oportunidade_id', oportunidadeId);
+        if (itensOportunidade && itensOportunidade.length > 0) {
+          await supabase.from('contrato_itens').insert(
+            itensOportunidade.map((i) => ({
+              empresa_id: empresaId,
+              contrato_id: contrato.id,
+              produto_id: i.produto_id,
+              descricao: i.descricao,
+              quantidade: i.quantidade,
+              valor_tabela_unitario: i.valor_unitario,
+              valor_negociado_unitario: i.valor_unitario,
+              desconto_unitario: i.desconto || 0,
+            }))
+          );
+        }
+      }
+
+      await supabase.from('atividades').insert({
+        empresa_id: empresaId, contrato_id: contrato.id, tipo: 'contrato_criado', titulo: 'Contrato criado',
+      });
+
+      window.location.href = `/ficha-contrato.html?id=${contrato.id}`;
+    });
+
+    await carregarLista();
+  </script>
+</body>
+</html>
