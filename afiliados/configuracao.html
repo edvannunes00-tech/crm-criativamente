@@ -14,6 +14,12 @@
     .agenda-row select, .agenda-row input[type=time], .agenda-row input[type=number] {
       padding:6px 8px; border-radius:var(--radius); border:0.5px solid var(--border-strong); background:var(--surface-2); font-size:12.5px; font-family:var(--font-mono);
     }
+    .cfg-row select, .cfg-row input[type=number] {
+      padding:4px 8px; border-radius:var(--radius); border:0.5px solid var(--border-strong); background:var(--surface-2);
+      font-size:12.5px; font-family:var(--font-mono); width:56px; text-align:right;
+    }
+    .cfg-row input[type=number]:invalid { border-color: var(--danger); }
+    .field-hint { font-size:11px; color:var(--ink-muted); }
     .pause-banner { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; }
     .toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px; border-radius: var(--radius); font-size: 13px; z-index: 60; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
     .toast.ok { background: var(--ok-soft); color: var(--ok); }
@@ -157,9 +163,18 @@
               <option value="manual" ${g.modo === 'manual' ? 'selected' : ''}>Manual (aprovar antes)</option>
             </select>
           </div>
-          <div class="cfg-row"><span>Score mínimo</span><span class="mono">${g.score_minimo ?? '—'}</span></div>
-          <div class="cfg-row"><span>Cooldown (h)</span><span class="mono">${g.cooldown_horas ?? '—'}</span></div>
-          <div class="cfg-row"><span>Máx. ofertas/hora</span><span class="mono">${g.max_ofertas_por_hora ?? '—'}</span></div>
+          <div class="cfg-row">
+            <span>Score mínimo</span>
+            <input type="number" data-campo="score_minimo" data-id="${g.id}" value="${g.score_minimo ?? 50}" min="0" max="100" step="1" />
+          </div>
+          <div class="cfg-row">
+            <span>Cooldown (h)</span>
+            <input type="number" data-campo="cooldown_horas" data-id="${g.id}" value="${g.cooldown_horas ?? 72}" min="12" max="168" step="1" />
+          </div>
+          <div class="cfg-row">
+            <span>Máx. ofertas/hora</span>
+            <input type="number" data-campo="max_ofertas_por_hora" data-id="${g.id}" value="${g.max_ofertas_por_hora ?? 2}" min="0" max="5" step="1" />
+          </div>
         </div>
       `).join('');
 
@@ -177,6 +192,27 @@
           if (error) { toast('err', 'Erro: ' + error.message); return; }
           toast('ok', 'Grupo atualizado.');
           carregarTudo();
+        });
+      });
+      // Score mínimo, cooldown e máx./hora: limites (min/max do próprio
+      // input) escolhidos pra não deixar configurar algo que quebre a
+      // operação — ex. cooldown abaixo de 12h ou mais de 5 ofertas/hora
+      // por grupo abrem risco de repetição/spam; salva ao sair do campo.
+      document.querySelectorAll('[data-campo]').forEach(input => {
+        input.addEventListener('change', async () => {
+          const campo = input.dataset.campo;
+          const min = Number(input.min), max = Number(input.max);
+          let valor = Number(input.value);
+          if (Number.isNaN(valor) || valor < min || valor > max) {
+            toast('err', `Valor precisa estar entre ${min} e ${max}.`);
+            input.value = GRUPOS.find(g => g.id === input.dataset.id)[campo];
+            return;
+          }
+          const { error } = await db.from('grupos').update({ [campo]: valor }).eq('id', input.dataset.id);
+          if (error) { toast('err', 'Erro ao salvar: ' + error.message); return; }
+          toast('ok', 'Salvo.');
+          const g = GRUPOS.find(x => x.id === input.dataset.id);
+          if (g) g[campo] = valor;
         });
       });
     }
@@ -238,18 +274,47 @@
       }
       document.getElementById('regrasGerais').innerHTML = `
         <div class="list-row" style="justify-content:space-between">
-          <span style="font-size:13px">Ciclo máximo de mineração</span>
-          <span class="mono" style="font-size:13px">${r.ciclo_maximo_minutos} min</span>
+          <div>
+            <div style="font-size:13px">Ciclo máximo de mineração</div>
+            <div class="field-hint">Acima de 10min o ciclo deixa de ser "rápido"; abaixo de 2min não dá tempo de minerar nada.</div>
+          </div>
+          <span style="display:flex; align-items:center; gap:4px;">
+            <input type="number" id="cicloMaximoInput" value="${r.ciclo_maximo_minutos}" min="2" max="10" step="1" />
+            <span class="mono" style="font-size:12px">min</span>
+          </span>
         </div>
         <div class="list-row" style="justify-content:space-between">
           <span style="font-size:13px">Máx. de grupos para o mesmo produto por ciclo</span>
-          <span class="mono" style="font-size:13px">${r.max_grupos_por_produto_por_ciclo}</span>
+          <input type="number" id="maxGruposInput" value="${r.max_grupos_por_produto_por_ciclo}" min="1" max="5" step="1" />
         </div>
         <div class="list-row" style="justify-content:space-between; border-bottom:none">
           <span style="font-size:13px">Repetição antecipada exige melhora de preço</span>
-          <div class="switch ${r.repeticao_antecipada_exige_melhora_preco ? '' : 'off'}"></div>
+          <div class="switch ${r.repeticao_antecipada_exige_melhora_preco ? '' : 'off'}" id="melhoraPrecoSwitch" style="cursor:pointer"></div>
         </div>
       `;
+
+      document.getElementById('cicloMaximoInput').addEventListener('change', (ev) => salvarRegraNumero('ciclo_maximo_minutos', ev.target, 2, 10));
+      document.getElementById('maxGruposInput').addEventListener('change', (ev) => salvarRegraNumero('max_grupos_por_produto_por_ciclo', ev.target, 1, 5));
+      document.getElementById('melhoraPrecoSwitch').addEventListener('click', async () => {
+        const novoValor = !r.repeticao_antecipada_exige_melhora_preco;
+        const { error } = await db.from('regras_gerais').update({ repeticao_antecipada_exige_melhora_preco: novoValor, updated_at: new Date().toISOString() }).eq('id', 1);
+        if (error) { toast('err', 'Erro ao salvar: ' + error.message); return; }
+        toast('ok', 'Salvo.');
+        carregarTudo();
+      });
+    }
+
+    async function salvarRegraNumero(campo, input, min, max) {
+      const valor = Number(input.value);
+      if (Number.isNaN(valor) || valor < min || valor > max) {
+        toast('err', `Valor precisa estar entre ${min} e ${max}.`);
+        input.value = REGRAS[campo];
+        return;
+      }
+      const { error } = await db.from('regras_gerais').update({ [campo]: valor, updated_at: new Date().toISOString() }).eq('id', 1);
+      if (error) { toast('err', 'Erro ao salvar: ' + error.message); return; }
+      toast('ok', 'Salvo.');
+      REGRAS[campo] = valor;
     }
   </script>
 </body>
