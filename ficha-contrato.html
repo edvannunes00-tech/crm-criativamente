@@ -45,6 +45,8 @@
     import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
     import { gerarPdfContrato, salvarDocumentoContrato } from '/src/lib/contratoPdf.js';
     import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
+    import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento } from '/src/lib/condicoesPagamento.js';
+    import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
 
     const { session, perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos / Ficha', title: 'Ficha do Contrato' });
     const empresaId = perm ? perm.empresa_id : null;
@@ -207,11 +209,54 @@
         </div>
 
         <div class="card mb-4">
-          <div class="mono-label mb-2">Condições de pagamento e observações</div>
-          <div class="field"><label class="mono-label">Condições de pagamento</label><textarea id="cCondicoesPagamento" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_pagamento_texto || '')}</textarea></div>
-          <div class="field"><label class="mono-label">Condições especiais</label><textarea id="cCondicoesEspeciais" rows="3" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea></div>
+          <div class="mono-label mb-2">Condição de pagamento</div>
+          <div class="field">
+            <label class="mono-label">Condição</label>
+            <select id="cCondicaoTipo" ${podeMexer ? '' : 'disabled'}>
+              <option value="">—</option>
+              ${CONDICOES_PAGAMENTO.map((o) => `<option value="${o.valor}" ${contrato.condicao_pagamento_tipo === o.valor ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field ${contrato.condicao_pagamento_tipo === 'sinal_saldo' ? '' : 'hidden'}" id="campoPercentualEntrada">
+            <label class="mono-label">Percentual de entrada (sinal)</label>
+            <select id="cPercentualPreset" ${podeMexer ? '' : 'disabled'}>
+              ${PERCENTUAIS_ENTRADA_PRESET.map((p) => `<option value="${p}" ${Number(contrato.condicao_pagamento_percentual_entrada) === p ? 'selected' : ''}>${p}%</option>`).join('')}
+              <option value="personalizado" ${contrato.condicao_pagamento_percentual_entrada && !PERCENTUAIS_ENTRADA_PRESET.includes(Number(contrato.condicao_pagamento_percentual_entrada)) ? 'selected' : ''}>Personalizado</option>
+            </select>
+            <input type="number" id="cPercentualCustom" min="1" max="99" step="1" placeholder="% personalizado" class="mt-2 ${contrato.condicao_pagamento_percentual_entrada && !PERCENTUAIS_ENTRADA_PRESET.includes(Number(contrato.condicao_pagamento_percentual_entrada)) ? '' : 'hidden'}" value="${contrato.condicao_pagamento_percentual_entrada && !PERCENTUAIS_ENTRADA_PRESET.includes(Number(contrato.condicao_pagamento_percentual_entrada)) ? contrato.condicao_pagamento_percentual_entrada : ''}" ${podeMexer ? '' : 'disabled'} />
+            <p class="text-muted mt-2" style="font-size:12px;" id="sinalSaldoResumo"></p>
+          </div>
+          <div class="field ${['parcelado_semanal', 'parcelado_mensal'].includes(contrato.condicao_pagamento_tipo) ? '' : 'hidden'}" id="campoParcelas">
+            <label class="mono-label">Parcelas</label>
+            <div class="flex gap-2">
+              <input type="number" id="cParcelasQtd" min="1" step="1" placeholder="Quantidade" style="flex:1;" value="${contrato.parcelas_quantidade || ''}" ${podeMexer ? '' : 'disabled'} />
+              <select id="cParcelasPeriodicidade" style="flex:1;" ${podeMexer ? '' : 'disabled'}>
+                ${PERIODICIDADES.map((p) => `<option value="${p.valor}" ${contrato.parcelas_periodicidade === p.valor ? 'selected' : ''}>${p.label}</option>`).join('')}
+              </select>
+            </div>
+            <input type="text" id="cParcelasObs" placeholder="Observação (opcional)" class="mt-2" value="${escapeHtml(contrato.parcelas_observacao || '')}" ${podeMexer ? '' : 'disabled'} />
+          </div>
+          <div class="field ${contrato.condicao_pagamento_tipo === 'personalizado' ? '' : 'hidden'}" id="campoCondicaoPersonalizada">
+            <label class="mono-label">Descreva a condição negociada</label>
+            <textarea id="cCondicaoPersonalizada" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicao_pagamento_tipo === 'personalizado' ? (contrato.condicoes_pagamento_texto || '') : '')}</textarea>
+          </div>
+
+          <div class="field mt-4">
+            <label class="mono-label">Forma de pagamento</label>
+            <select id="cFormaPagamento" ${podeMexer ? '' : 'disabled'}>
+              <option value="">—</option>
+              ${FORMAS_PAGAMENTO.map((o) => `<option value="${o.valor}" ${contrato.forma_pagamento === o.valor ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field ${contrato.forma_pagamento === 'outro' ? '' : 'hidden'}" id="campoFormaOutro">
+            <input type="text" id="cFormaOutroDescricao" placeholder="Descreva a forma de pagamento" value="${escapeHtml(contrato.forma_pagamento_outro_descricao || '')}" ${podeMexer ? '' : 'disabled'} />
+          </div>
+
+          <div class="field mt-4"><label class="mono-label">Condições especiais</label><textarea id="cCondicoesEspeciais" rows="3" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea></div>
           <div class="field"><label class="mono-label">Observações internas</label><textarea id="cObservacoes" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.observacoes || '')}</textarea></div>
-          ${podeMexer ? `<button class="btn btn-primary btn-sm" id="btnSalvarCondicoes">Salvar condições</button>` : ''}
+
+          ${contrato.condicoes_pagamento_texto ? `<p class="text-muted mt-2" style="font-size:12px;">Resumo atual: ${escapeHtml(contrato.condicoes_pagamento_texto)}</p>` : ''}
+          ${podeMexer ? `<button class="btn btn-primary btn-sm mt-2" id="btnSalvarCondicoes">Salvar condições</button>` : ''}
         </div>
 
         <div class="card">
@@ -284,18 +329,93 @@
         });
       });
 
+      // ---- Toggles de visibilidade + calculo ao vivo de sinal/saldo ----
+      const condicaoTipoSel = document.getElementById('cCondicaoTipo');
+      const percentualPreset = document.getElementById('cPercentualPreset');
+      const percentualCustom = document.getElementById('cPercentualCustom');
+      const formaSel = document.getElementById('cFormaPagamento');
+
+      function percentualEntradaAtual() {
+        if (!percentualPreset) return null;
+        if (percentualPreset.value === 'personalizado') {
+          const v = Number(percentualCustom.value);
+          return v > 0 && v < 100 ? v : null;
+        }
+        return Number(percentualPreset.value);
+      }
+
+      function atualizarResumoSinalSaldo() {
+        const box = document.getElementById('sinalSaldoResumo');
+        if (!box) return;
+        const pct = percentualEntradaAtual();
+        if (!pct) { box.textContent = ''; return; }
+        const saldo = 100 - pct;
+        const valorNegociado = Number(contrato.valor_negociado_total) || 0;
+        const valorSinal = valorNegociado * (pct / 100);
+        const valorSaldo = valorNegociado - valorSinal;
+        box.textContent = `Sinal: ${pct}% — ${formatarMoeda(valorSinal)}   |   Saldo: ${saldo}% — ${formatarMoeda(valorSaldo)}`;
+      }
+
+      function atualizarVisibilidadeCondicao() {
+        const tipo = condicaoTipoSel.value;
+        document.getElementById('campoPercentualEntrada').classList.toggle('hidden', tipo !== 'sinal_saldo');
+        document.getElementById('campoParcelas').classList.toggle('hidden', !['parcelado_semanal', 'parcelado_mensal'].includes(tipo));
+        document.getElementById('campoCondicaoPersonalizada').classList.toggle('hidden', tipo !== 'personalizado');
+        if (tipo === 'sinal_saldo') atualizarResumoSinalSaldo();
+      }
+
+      if (condicaoTipoSel) {
+        condicaoTipoSel.addEventListener('change', atualizarVisibilidadeCondicao);
+        atualizarVisibilidadeCondicao();
+      }
+      if (percentualPreset) {
+        percentualPreset.addEventListener('change', () => {
+          percentualCustom.classList.toggle('hidden', percentualPreset.value !== 'personalizado');
+          atualizarResumoSinalSaldo();
+        });
+        percentualCustom.addEventListener('input', atualizarResumoSinalSaldo);
+      }
+      if (formaSel) {
+        formaSel.addEventListener('change', () => {
+          document.getElementById('campoFormaOutro').classList.toggle('hidden', formaSel.value !== 'outro');
+        });
+      }
+
       const btnSalvarCondicoes = document.getElementById('btnSalvarCondicoes');
       if (btnSalvarCondicoes) {
         btnSalvarCondicoes.addEventListener('click', async () => {
           btnSalvarCondicoes.disabled = true; btnSalvarCondicoes.textContent = 'Salvando...';
+
+          const condicaoTipo = condicaoTipoSel.value || null;
+          const percentualEntrada = condicaoTipo === 'sinal_saldo' ? percentualEntradaAtual() : null;
+          const formaPagamento = formaSel.value || null;
+          const formaOutro = formaPagamento === 'outro' ? document.getElementById('cFormaOutroDescricao').value.trim() || null : null;
+          const parcelasQtd = ['parcelado_semanal', 'parcelado_mensal'].includes(condicaoTipo) ? (Number(document.getElementById('cParcelasQtd').value) || null) : null;
+          const parcelasPeriodicidade = ['parcelado_semanal', 'parcelado_mensal'].includes(condicaoTipo) ? document.getElementById('cParcelasPeriodicidade').value : null;
+          const parcelasObs = ['parcelado_semanal', 'parcelado_mensal'].includes(condicaoTipo) ? (document.getElementById('cParcelasObs').value.trim() || null) : null;
+          const textoPersonalizado = condicaoTipo === 'personalizado' ? document.getElementById('cCondicaoPersonalizada').value.trim() || null : null;
+
+          const resumo = montarResumoCondicaoPagamento({
+            condicaoTipo, percentualEntrada, formaPagamento, formaPagamentoOutro: formaOutro,
+            parcelasQuantidade: parcelasQtd, parcelasPeriodicidade, parcelasObservacao: parcelasObs, textoPersonalizado,
+          });
+
           const { error } = await supabase.from('contratos').update({
-            condicoes_pagamento_texto: document.getElementById('cCondicoesPagamento').value.trim() || null,
+            condicao_pagamento_tipo: condicaoTipo,
+            condicao_pagamento_percentual_entrada: percentualEntrada,
+            forma_pagamento: formaPagamento,
+            forma_pagamento_outro_descricao: formaOutro,
+            parcelas_quantidade: parcelasQtd,
+            parcelas_periodicidade: parcelasPeriodicidade,
+            parcelas_observacao: parcelasObs,
+            condicoes_pagamento_texto: resumo,
             condicoes_especiais: document.getElementById('cCondicoesEspeciais').value.trim() || null,
             observacoes: document.getElementById('cObservacoes').value.trim() || null,
           }).eq('id', contratoId);
           btnSalvarCondicoes.disabled = false; btnSalvarCondicoes.textContent = 'Salvar condições';
           if (error) { alert('Não foi possível salvar: ' + error.message); return; }
           await carregarCabecalho();
+          await abrirAba('comercial');
         });
       }
     }
@@ -404,7 +524,10 @@
           ${podeGerenciar ? `<button class="btn btn-primary" id="btnGerarLink">Gerar novo link de preenchimento</button>` : ''}
           <div id="linkGeradoBox"></div>
         </div>
-        <div class="card"><div class="mono-label mb-4">Links já gerados</div>${linksHtml}</div>
+        <div class="card">
+          <div class="flex items-center justify-between mb-4"><span class="mono-label">Links já gerados</span><button class="btn-ghost" id="btnAtualizarLista" style="font-size:12px; text-decoration:underline;">Atualizar lista</button></div>
+          ${linksHtml}
+        </div>
       `;
     }
 
@@ -416,17 +539,47 @@
           try {
             const resultado = await gerarLinkContrato(contratoId, 7);
             const url = `${window.location.origin}/contrato-publico.html#t=${resultado.token}`;
+            const temWhatsapp = contato.whatsapp && contato.whatsapp.replace(/\D/g, '').length >= 10;
             document.getElementById('linkGeradoBox').innerHTML = `
               <p class="mt-4 text-muted" style="font-size:12.5px;">Copie o link abaixo agora — ele não será mostrado de novo. Expira em ${formatarData(resultado.expires_at, true)}.</p>
               <div class="link-token-box">${escapeHtml(url)}</div>
-              <button class="btn btn-secondary btn-sm" id="btnCopiarLink">Copiar link</button>
+              <div class="flex gap-2 mt-2">
+                <button class="btn btn-secondary btn-sm" id="btnCopiarLink">Copiar link</button>
+                ${temWhatsapp
+                  ? `<button class="btn btn-secondary btn-sm" id="btnEnviarWhatsapp">Enviar pelo WhatsApp</button>`
+                  : `<span class="text-muted" style="font-size:12px; align-self:center;">Cliente sem WhatsApp cadastrado</span>`}
+              </div>
             `;
             document.getElementById('btnCopiarLink').addEventListener('click', () => {
               navigator.clipboard.writeText(url);
               document.getElementById('btnCopiarLink').textContent = 'Copiado!';
             });
-            await carregarCabecalho();
-            await abrirAba('link');
+            const btnWhats = document.getElementById('btnEnviarWhatsapp');
+            if (btnWhats) {
+              btnWhats.addEventListener('click', async () => {
+                const primeiroNome = (contato.nome || '').split(' ')[0] || contato.nome || '';
+                const mensagem = `Olá, ${primeiroNome}!\n\nConforme conversamos, segue o link para você revisar seus dados e as condições do contrato:\n\n${url}`;
+                const link = whatsappLink(contato.whatsapp);
+                window.open(`${link}?text=${encodeURIComponent(mensagem)}`, '_blank');
+                // Registra a atividade só porque o usuário de fato clicou e o
+                // WhatsApp foi aberto com a mensagem pronta -- não temos como
+                // confirmar que a mensagem foi enviada de verdade, então o
+                // texto do evento reflete exatamente isso (abertura, não envio).
+                await supabase.from('atividades').insert({
+                  empresa_id: empresaId, contrato_id: contratoId, tipo: 'contrato_enviado',
+                  titulo: 'Link aberto no WhatsApp para envio', usuario_id: usuarioId,
+                  metadata: { canal: 'whatsapp', destinatario: contato.whatsapp },
+                });
+                if (contrato.status === 'rascunho') await supabase.from('contratos').update({ status: 'enviado' }).eq('id', contratoId);
+                await carregarCabecalho();
+              });
+            }
+            // Nao recarrega a aba/cabecalho aqui de proposito -- o token
+            // acima e de uso unico (nunca mais aparece), entao a caixa
+            // precisa continuar visivel ate o usuario copiar/enviar. Um
+            // "Atualizar" abaixo deixa explicito que ha uma acao pra ver
+            // o link na lista, em vez de sumir sozinho.
+            btn.textContent = 'Link gerado — clique em "Atualizar lista" para ver na tabela abaixo';
           } catch (err) {
             alert('Falha ao gerar o link: ' + err.message);
             btn.disabled = false; btn.textContent = 'Gerar novo link de preenchimento';
@@ -440,12 +593,16 @@
           if (!confirm('Revogar este link? Ele deixará de funcionar imediatamente.')) return;
           try {
             await revogarLinkContrato(el.dataset.revogar, motivo);
+            await carregarCabecalho();
             await abrirAba('link');
           } catch (err) {
             alert('Falha ao revogar: ' + err.message);
           }
         });
       });
+
+      const btnAtualizar = document.getElementById('btnAtualizarLista');
+      if (btnAtualizar) btnAtualizar.addEventListener('click', async () => { await carregarCabecalho(); await abrirAba('link'); });
     }
 
     // ==================== ABA ASSINATURA ====================

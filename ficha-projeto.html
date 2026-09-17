@@ -36,6 +36,7 @@
 
         <div class="tabs" id="tabsNav">
           <button class="tab active" data-tab="areas">Áreas &amp; Etapas</button>
+          <button class="tab" data-tab="contratos">Contratos</button>
           <button class="tab" data-tab="timeline">Timeline</button>
           <button class="tab" data-tab="documentos">Documentos</button>
         </div>
@@ -222,6 +223,20 @@
     const abas = {
       areas: async () => await carregarArvore(),
 
+      contratos: async () => {
+        const { data, error } = await supabase.from('contratos').select('id, titulo, status, valor_negociado_total, created_at').eq('projeto_id', projetoId).order('created_at', { ascending: false });
+        if (error) return `<div class="error-state"><p>Não foi possível carregar os contratos.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhum contrato vinculado a este projeto.</p></div>`;
+        const STATUS_LABEL = { rascunho: 'Rascunho', enviado: 'Enviado', aguardando_assinatura: 'Aguard. assinatura', assinado: 'Assinado', validado: 'Validado', cancelado: 'Cancelado' };
+        const STATUS_BADGE = { rascunho: 'dot-neutro', enviado: 'dot-info', aguardando_assinatura: 'dot-info', assinado: 'dot-sucesso', validado: 'dot-sucesso', cancelado: 'dot-erro' };
+        return `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Título</th><th>Status</th><th>Valor negociado</th><th>Criado em</th></tr></thead>
+            <tbody>${data.map((c) => `<tr data-id="${c.id}" style="cursor:pointer;"><td class="cell-primary">${escapeHtml(c.titulo)}</td><td><span class="badge ${STATUS_BADGE[c.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[c.status] || c.status}</span></td><td>${formatarMoeda(c.valor_negociado_total)}</td><td class="cell-muted">${formatarData(c.created_at)}</td></tr>`).join('')}</tbody>
+          </table></div>
+        `;
+      },
+
       timeline: async () => {
         const { data, error } = await supabase.from('atividades').select('*').eq('projeto_id', projetoId).order('created_at', { ascending: false }).limit(50);
         if (error) return `<div class="error-state"><p>Não foi possível carregar a timeline.</p></div>`;
@@ -258,6 +273,11 @@
       content.innerHTML = '<div class="skeleton skeleton-row"></div>';
       content.innerHTML = await abas[nome]();
       if (nome === 'areas') ativarInteracoesArvore(content);
+      if (nome === 'contratos') {
+        content.querySelectorAll('tbody tr[data-id]').forEach((tr) => {
+          tr.addEventListener('click', () => { window.location.href = `/ficha-contrato.html?id=${tr.dataset.id}`; });
+        });
+      }
     }
 
     document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));

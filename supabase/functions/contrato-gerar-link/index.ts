@@ -2,15 +2,25 @@
 // Edge Function: contrato-gerar-link
 // ------------------------------------------------------------
 // Gera um link publico seguro de preenchimento para um contrato.
-// So o CRM autenticado chama isso (verify_jwt liga a checagem de
-// JWT no gateway do Supabase; mesmo assim confirmamos de novo aqui,
-// igual ao padrao ja usado em convidar-usuario).
+// So o CRM autenticado chama isso -- verify_jwt liga a checagem de
+// JWT no gateway do Supabase pra POST/GET, mas o gateway deixa OPTIONS
+// (preflight de CORS) passar sem exigir Authorization; por isso a
+// function precisa responder o preflight ela mesma, com os headers de
+// CORS corretos, senao o navegador bloqueia a chamada real antes de
+// envia-la (a chamada nunca chega a errar por auth -- o browser nem
+// tenta). Mesmo padrao ja usado em contrato-publico/contrato-segunda-via.
 //
 // O token cru so existe nesta resposta -- so o hash (sha-256) e
 // gravado em crm.contrato_links.
 // ============================================================
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 const DIAS_VALIDADE_PADRAO = 7;
 const DIAS_VALIDADE_MAXIMO = 30;
@@ -20,7 +30,7 @@ const STATUS_CONTRATO_BLOQUEADOS = ["assinado", "validado", "cancelado"];
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
@@ -41,6 +51,10 @@ async function sha256Hex(texto: string): Promise<string> {
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { status: 200, headers: CORS_HEADERS });
+  }
+
   try {
     if (req.method !== "POST") {
       return jsonResponse({ error: "Metodo nao permitido" }, 405);
@@ -137,13 +151,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Falha ao criar o link." }, 500);
     }
 
-    await supabaseAdmin.from("atividades").insert({
+    const { error: atividadeError } = await supabaseAdmin.from("atividades").insert({
       empresa_id: contrato.empresa_id,
       contrato_id: contrato.id,
       tipo: "link_criado",
       titulo: "Link de preenchimento gerado",
       usuario_id: userData.user.id,
     });
+    if (atividadeError) console.error("Falha ao registrar atividade link_criado:", atividadeError);
 
     return jsonResponse(
       {

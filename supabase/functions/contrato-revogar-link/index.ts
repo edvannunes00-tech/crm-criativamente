@@ -6,18 +6,32 @@
 // real e garantida pelo trigger crm.trg_before_contrato_link no
 // banco; esta function so orienta o UPDATE e trata "0 linhas
 // afetadas" como "link ja nao estava mais ativo".
+//
+// CORS: mesmo motivo de contrato-gerar-link -- chamada cross-origin
+// do navegador com JSON dispara preflight OPTIONS, que precisa de
+// resposta com os headers certos ou o browser bloqueia a chamada real.
 // ============================================================
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { status: 200, headers: CORS_HEADERS });
+  }
+
   try {
     if (req.method !== "POST") {
       return jsonResponse({ error: "Metodo nao permitido" }, 405);
@@ -103,7 +117,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    await supabaseAdmin.from("atividades").insert({
+    const { error: atividadeError } = await supabaseAdmin.from("atividades").insert({
       empresa_id: link.empresa_id,
       contrato_id: link.contrato_id,
       tipo: "link_revogado",
@@ -111,6 +125,7 @@ Deno.serve(async (req: Request) => {
       usuario_id: userData.user.id,
       descricao: motivo_revogacao ?? null,
     });
+    if (atividadeError) console.error("Falha ao registrar atividade link_revogado:", atividadeError);
 
     return jsonResponse({ ok: true }, 200);
   } catch (err) {
