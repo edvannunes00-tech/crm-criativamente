@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Envio Manual — PromoWhats</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+  <style>
+    .form-card { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 14px; max-width: 640px; }
+    .form-row { display: flex; flex-direction: column; gap: 5px; }
+    .form-row label { font-size: 12px; color: var(--ink-2); }
+    .form-row input, .form-row select, .form-row textarea {
+      padding: 9px 12px; border-radius: var(--radius); border: 0.5px solid var(--border-strong);
+      background: var(--surface-2); font-size: 13.5px; font-family: var(--font-sans);
+    }
+    .form-row textarea { min-height: 140px; font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .shortcut-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+    .shortcut-edit { display: none; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .shortcut-edit.on { display: flex; }
+    .shortcut-edit input { padding: 6px 10px; border-radius: var(--radius); border: 0.5px solid var(--border-strong); background: var(--surface-2); font-size: 12.5px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px; border-radius: var(--radius); font-size: 13px; z-index: 60; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .toast.ok { background: var(--ok-soft); color: var(--ok); }
+    .toast.err { background: var(--danger-soft); color: var(--danger); }
+    @media (max-width: 640px) { .form-grid-2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">Envio manual</div>
+          <div class="pagesub">Pra quando precisar rodar na mão — pelo celular ou sem depender da automação</div>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Atalho rápido</div>
+      <div class="card shortcut-card">
+        <a id="atalhoLink" href="#" target="_blank" class="btn primary" style="text-decoration:none">Carregando…</a>
+        <div>
+          <button class="btn" id="editarAtalhoBtn">Editar atalho</button>
+          <div class="shortcut-edit" id="shortcutEdit">
+            <input type="text" id="atalhoLabelInput" placeholder="Nome do botão" style="width:180px" />
+            <input type="text" id="atalhoUrlInput" placeholder="URL" style="width:260px" />
+            <button class="btn primary" id="salvarAtalhoBtn">Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Compor oferta</div>
+      <div class="card form-card">
+        <div class="form-row">
+          <label>Grupo de destino</label>
+          <select id="grupoSelect"></select>
+        </div>
+        <div class="form-row">
+          <label>Nome do produto</label>
+          <input type="text" id="produtoInput" placeholder="Ex: Fone Bluetooth Gamer XYZ" />
+        </div>
+        <div class="form-row">
+          <label>Link original do produto (Shopee)</label>
+          <input type="text" id="urlOriginalInput" placeholder="https://shopee.com.br/..." />
+        </div>
+        <div class="form-row">
+          <label>Link de afiliado (gere no atalho acima e cole aqui)</label>
+          <input type="text" id="urlAfiliadoInput" placeholder="https://s.shopee.com.br/..." />
+        </div>
+        <div class="form-grid-2">
+          <div class="form-row"><label>Preço atual (R$)</label><input type="number" step="0.01" id="precoAtualInput" /></div>
+          <div class="form-row"><label>Preço anterior (R$)</label><input type="number" step="0.01" id="precoAnteriorInput" /></div>
+          <div class="form-row"><label>Avaliação</label><input type="number" step="0.1" min="0" max="5" id="avaliacaoInput" /></div>
+          <div class="form-row"><label>Vendas (texto, ex: 10mil+)</label><input type="text" id="vendasInput" /></div>
+        </div>
+        <div class="form-row">
+          <label>URL da imagem (opcional — cole a URL da foto do produto)</label>
+          <input type="text" id="imagemUrlInput" placeholder="https://..." />
+        </div>
+        <div class="form-row">
+          <label>Copy (editável — use só dados reais preenchidos acima)</label>
+          <textarea id="copyInput"></textarea>
+          <button class="btn" id="gerarCopyBtn" style="align-self:flex-start">Gerar copy a partir dos campos</button>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn" id="copiarTextoBtn">Copiar texto (colar direto no WhatsApp)</button>
+          <button class="btn primary" id="enviarAutomacaoBtn">Enviar via automação (worker processa em até ~30min, ou agora se o Mac estiver com o app aberto)</button>
+        </div>
+        <div class="field-hint">
+          "Copiar texto" sempre funciona, de qualquer aparelho — só colar você mesmo no grupo pelo WhatsApp. "Enviar via automação" grava o pedido pro worker publicar de verdade, mas só tem efeito se o Mac + app do Claude Code estiverem ligados.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'manual.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+
+    function toast(kind, msg) {
+      const c = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      el.className = `toast ${kind}`;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => el.remove(), 4500);
+    }
+
+    // --- grupos ---
+    const { data: grupos, error: errGrupos } = await db.from('grupos').select('*').order('nome');
+    if (errGrupos) { if (!(await handleQueryError(errGrupos))) toast('err', 'Erro ao carregar grupos: ' + errGrupos.message); }
+    document.getElementById('grupoSelect').innerHTML = (grupos || []).map(g => `<option value="${g.nome}">${g.nome}</option>`).join('');
+
+    // --- atalho editável ---
+    const { data: regras } = await db.from('regras_gerais').select('atalho_label, atalho_url').eq('id', 1).maybeSingle();
+    const atalhoLink = document.getElementById('atalhoLink');
+    function pintarAtalho(label, url) {
+      atalhoLink.textContent = label;
+      atalhoLink.href = url;
+    }
+    pintarAtalho(regras?.atalho_label || 'Gerador de link Shopee', regras?.atalho_url || 'https://affiliate.shopee.com.br/offer/custom_link');
+
+    document.getElementById('editarAtalhoBtn').addEventListener('click', () => {
+      const edit = document.getElementById('shortcutEdit');
+      edit.classList.toggle('on');
+      document.getElementById('atalhoLabelInput').value = atalhoLink.textContent;
+      document.getElementById('atalhoUrlInput').value = atalhoLink.href;
+    });
+    document.getElementById('salvarAtalhoBtn').addEventListener('click', async () => {
+      const label = document.getElementById('atalhoLabelInput').value.trim() || 'Atalho';
+      const url = document.getElementById('atalhoUrlInput').value.trim();
+      if (!url) { toast('err', 'Preencha a URL do atalho.'); return; }
+      const { error } = await db.from('regras_gerais').update({ atalho_label: label, atalho_url: url, updated_at: new Date().toISOString() }).eq('id', 1);
+      if (error) { toast('err', 'Erro ao salvar: ' + error.message); return; }
+      pintarAtalho(label, url);
+      document.getElementById('shortcutEdit').classList.remove('on');
+      toast('ok', 'Atalho atualizado.');
+    });
+
+    // --- gerar copy a partir dos campos ---
+    document.getElementById('gerarCopyBtn').addEventListener('click', () => {
+      const produto = document.getElementById('produtoInput').value.trim();
+      const precoAtual = document.getElementById('precoAtualInput').value;
+      const precoAnterior = document.getElementById('precoAnteriorInput').value;
+      const avaliacao = document.getElementById('avaliacaoInput').value;
+      const vendas = document.getElementById('vendasInput').value.trim();
+      const link = document.getElementById('urlAfiliadoInput').value.trim();
+
+      if (!produto || !precoAtual || !link) {
+        toast('err', 'Preencha ao menos produto, preço atual e link de afiliado antes de gerar a copy.');
+        return;
+      }
+      let desconto = '';
+      if (precoAnterior && Number(precoAnterior) > Number(precoAtual)) {
+        const pct = Math.round((1 - Number(precoAtual) / Number(precoAnterior)) * 100);
+        desconto = `\n💥 ${pct}% OFF`;
+      }
+      const linhaPreco = precoAnterior
+        ? `De: ~~R$ ${Number(precoAnterior).toFixed(2).replace('.', ',')}~~\n🔥 Por: R$ ${Number(precoAtual).toFixed(2).replace('.', ',')}`
+        : `Por: R$ ${Number(precoAtual).toFixed(2).replace('.', ',')}`;
+      const linhaAvaliacao = avaliacao ? `\n⭐ ${avaliacao}${vendas ? ' • ' + vendas + ' vendidos' : ''}` : (vendas ? `\n${vendas} vendidos` : '');
+
+      document.getElementById('copyInput').value =
+`🔥 OFERTA
+
+${produto}
+
+${linhaPreco}${desconto}${linhaAvaliacao}
+
+🔗 ${link}
+
+⚠️ Preço sujeito a alteração pelo marketplace.`;
+      toast('ok', 'Copy gerada — revise antes de enviar.');
+    });
+
+    // --- copiar texto (sempre funciona, qualquer aparelho) ---
+    document.getElementById('copiarTextoBtn').addEventListener('click', async () => {
+      const texto = document.getElementById('copyInput').value;
+      if (!texto.trim()) { toast('err', 'Nada pra copiar ainda — gere ou escreva a copy primeiro.'); return; }
+      try {
+        await navigator.clipboard.writeText(texto);
+        toast('ok', 'Copiado! Já pode colar direto no WhatsApp.');
+      } catch {
+        toast('err', 'Não consegui copiar automaticamente — selecione e copie o texto manualmente.');
+      }
+    });
+
+    // --- enviar via automação (worker processa) ---
+    document.getElementById('enviarAutomacaoBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('enviarAutomacaoBtn');
+      const produto = document.getElementById('produtoInput').value.trim();
+      const grupo = document.getElementById('grupoSelect').value;
+      const urlOriginal = document.getElementById('urlOriginalInput').value.trim();
+      const urlAfiliado = document.getElementById('urlAfiliadoInput').value.trim();
+      const precoAtual = document.getElementById('precoAtualInput').value;
+      const precoAnterior = document.getElementById('precoAnteriorInput').value;
+      const avaliacao = document.getElementById('avaliacaoInput').value;
+      const vendas = document.getElementById('vendasInput').value.trim();
+      const imagemUrl = document.getElementById('imagemUrlInput').value.trim();
+      const copy = document.getElementById('copyInput').value.trim();
+
+      if (!produto || !grupo || !urlOriginal || !urlAfiliado || !precoAtual || !copy) {
+        toast('err', 'Preencha ao menos: produto, grupo, link original, link de afiliado, preço atual e copy.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Enviando pedido…';
+
+      const grupoInfo = (grupos || []).find(g => g.nome === grupo);
+      const { data: novaOferta, error: errInsert } = await db.from('ofertas').insert({
+        marketplace: 'shopee',
+        produto,
+        url_original: urlOriginal,
+        url_afiliado: urlAfiliado,
+        preco_atual: Number(precoAtual),
+        preco_anterior: precoAnterior ? Number(precoAnterior) : null,
+        avaliacao: avaliacao ? Number(avaliacao) : null,
+        vendas: vendas || null,
+        imagem_url: imagemUrl || null,
+        nicho: grupoInfo?.nicho || null,
+        grupo_destino: grupo,
+        status: 'APROVADO_AGUARDANDO_PUBLICACAO',
+        copy,
+        aprovado_por: session.user.id,
+        aprovado_em: new Date().toISOString(),
+      }).select('id').single();
+
+      if (errInsert) {
+        toast('err', 'Erro ao salvar oferta: ' + errInsert.message);
+        btn.disabled = false; btn.textContent = 'Enviar via automação (worker processa em até ~30min, ou agora se o Mac estiver com o app aberto)';
+        return;
+      }
+
+      const { error: errComando } = await db.from('comandos').insert({
+        tipo: 'envio_imediato',
+        oferta_id: novaOferta.id,
+        solicitado_por: session.user.id,
+      });
+
+      btn.disabled = false;
+      btn.textContent = 'Enviar via automação (worker processa em até ~30min, ou agora se o Mac estiver com o app aberto)';
+
+      if (errComando) { toast('err', 'Oferta salva, mas erro ao solicitar envio: ' + errComando.message); return; }
+      toast('ok', 'Solicitado! O worker publica assim que acordar (até ~30min, se o Mac/app estiverem ligados).');
+    });
+  </script>
+</body>
+</html>

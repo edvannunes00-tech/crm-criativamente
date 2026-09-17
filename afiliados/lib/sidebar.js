@@ -6,12 +6,13 @@
 // o arquivo real do CRM — não duplicado aqui).
 // ============================================================
 import { logout } from '/src/lib/session.js';
-import { ICON_DASHBOARD, ICON_ESTOQUE, ICON_APROVAR, ICON_HISTORICO, ICON_CONFIG, ICON_METRICAS, ICON_BACK } from './icons.js';
+import { ICON_DASHBOARD, ICON_ESTOQUE, ICON_APROVAR, ICON_HISTORICO, ICON_CONFIG, ICON_METRICAS, ICON_BACK, ICON_MANUAL } from './icons.js';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: 'dashboard.html', icon: ICON_DASHBOARD },
   { label: 'Estoque', href: 'estoque.html', icon: ICON_ESTOQUE },
   { label: 'Aprovar / rejeitar', href: 'aprovar.html', icon: ICON_APROVAR },
+  { label: 'Envio manual', href: 'manual.html', icon: ICON_MANUAL },
   { label: 'Histórico', href: 'historico.html', icon: ICON_HISTORICO },
   { label: 'Configuração', href: 'configuracao.html', icon: ICON_CONFIG },
   { label: 'Métricas', href: 'metricas.html', icon: ICON_METRICAS },
