@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Histórico — PromoWhats</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">Histórico</div>
+          <div class="pagesub">Publicações reais, direto de afiliados.ofertas</div>
+        </div>
+        <div class="cyclepill"><span class="dot" id="statusDot"></span><span id="resumo">carregando…</span></div>
+      </div>
+
+      <div class="filters" id="filtroPeriodo"></div>
+      <div class="filters" id="filtroGrupo"></div>
+      <div class="filters" id="filtroMarketplace"></div>
+
+      <div class="card" id="lista"><div class="empty-state">Carregando histórico…</div></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+    import { money, marketplaceLabel, dateFromEpoch } from '/afiliados/lib/format.js';
+    import { ICON_PHOTO } from '/afiliados/lib/icons.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'historico.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+    let TODAS = [];
+    let filtroPeriodo = 'TODOS';
+    let filtroGrupo = 'TODOS';
+    let filtroMarketplace = 'TODOS';
+
+    const { data, error } = await db.from('ofertas').select('*').eq('status', 'PUBLISHED').order('published_at', { ascending: false });
+
+    const dot = document.getElementById('statusDot');
+    if (error) {
+      if (await handleQueryError(error)) { /* redirecionou */ }
+      else {
+        document.getElementById('lista').innerHTML = `<div class="empty-state">Não foi possível carregar o histórico: ${error.message}</div>`;
+        document.getElementById('resumo').textContent = 'erro ao carregar';
+      }
+    } else {
+      dot.className = 'dot';
+      TODAS = data || [];
+      renderFiltros();
+      renderLista();
+    }
+
+    function renderFiltros() {
+      const grupos = ['TODOS', ...new Set(TODAS.map(o => o.grupo_destino).filter(Boolean))];
+      const marketplaces = ['TODOS', ...new Set(TODAS.map(o => o.marketplace).filter(Boolean))];
+
+      document.getElementById('filtroPeriodo').innerHTML = ['TODOS', '7', '30'].map(p =>
+        `<div class="chip ${p === filtroPeriodo ? 'on' : ''}" data-kind="periodo" data-val="${p}">${p === 'TODOS' ? 'Todo o período' : `Últimos ${p} dias`}</div>`
+      ).join('');
+      document.getElementById('filtroGrupo').innerHTML = grupos.map(g =>
+        `<div class="chip ${g === filtroGrupo ? 'on' : ''}" data-kind="grupo" data-val="${g}">${g === 'TODOS' ? 'Todos os grupos' : g}</div>`
+      ).join('');
+      document.getElementById('filtroMarketplace').innerHTML = marketplaces.map(m =>
+        `<div class="chip ${m === filtroMarketplace ? 'on' : ''}" data-kind="mp" data-val="${m}">${m === 'TODOS' ? 'Todos os marketplaces' : marketplaceLabel(m)}</div>`
+      ).join('');
+
+      document.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          const { kind, val } = chip.dataset;
+          if (kind === 'periodo') filtroPeriodo = val;
+          if (kind === 'grupo') filtroGrupo = val;
+          if (kind === 'mp') filtroMarketplace = val;
+          renderFiltros();
+          renderLista();
+        });
+      });
+    }
+
+    function renderLista() {
+      const agora = Date.now() / 1000;
+      const filtradas = TODAS.filter(o => {
+        if (filtroPeriodo !== 'TODOS') {
+          const dias = Number(filtroPeriodo);
+          if (!o.published_at || (agora - o.published_at) > dias * 86400) return false;
+        }
+        if (filtroGrupo !== 'TODOS' && o.grupo_destino !== filtroGrupo) return false;
+        if (filtroMarketplace !== 'TODOS' && o.marketplace !== filtroMarketplace) return false;
+        return true;
+      });
+
+      document.getElementById('resumo').textContent = `${TODAS.length} publicadas no total · ${filtradas.length} exibidas`;
+
+      if (filtradas.length === 0) {
+        document.getElementById('lista').innerHTML = '<div class="empty-state">Nenhuma publicação com esses filtros — sem dados.</div>';
+        return;
+      }
+
+      document.getElementById('lista').innerHTML = filtradas.map(o => `
+        <div class="list-row">
+          <div class="thumb">${ICON_PHOTO}</div>
+          <div class="rowmain">
+            <div class="rowtitle">${o.produto}</div>
+            <div class="rowmeta">
+              <span class="badge ${o.marketplace === 'shopee' ? 'shp' : 'ml'}">${marketplaceLabel(o.marketplace)}</span>
+              <span>${o.grupo_destino || '—'}</span>
+              ${o.calculated_discount != null ? `<span>${o.calculated_discount}% off</span>` : ''}
+              <span>${dateFromEpoch(o.published_at)}</span>
+            </div>
+          </div>
+          <div class="price">${money(o.preco_atual)}</div>
+          <div class="pill ok">Publicado</div>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>

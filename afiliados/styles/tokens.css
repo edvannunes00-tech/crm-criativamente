@@ -1,0 +1,62 @@
+/* ============================================================
+   DESIGN TOKENS — Promowhatsapp
+   Identidade visual aprovada no protótipo (Artifact "Radar de
+   ofertas"): off-white, verde/teal, cards arredondados, clean.
+   Produto separado do CriativaCRM — identidade própria, não herda
+   o tema escuro/verde-neon do CRM.
+   ============================================================ */
+:root {
+  --bg: #F6F4EE;
+  --surface: #FFFFFF;
+  --surface-2: #FBFAF5;
+  --border: #E2DECE;
+  --border-strong: #CFC9B4;
+
+  --ink: #211F17;
+  --ink-2: #68644F;
+  --ink-muted: #9C9789;
+
+  --accent: #0F6E56;
+  --accent-ink: #0B4F3E;
+  --accent-soft: #DEEEE7;
+
+  --ml: #3D6BC4;
+  --ml-soft: #E4EBFA;
+  --shp: #D3480F;
+  --shp-soft: #FBE7DB;
+
+  --ok: #1E7A46;
+  --ok-soft: #E1F3E7;
+  --warn: #A8670A;
+  --warn-soft: #FBEDD6;
+  --danger: #B5342E;
+  --danger-soft: #FBE4E2;
+  --neu: #68644F;
+  --neu-soft: #ECE8DA;
+
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+  --radius: 10px;
+  --radius-lg: 12px;
+  --sidebar-width: 220px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

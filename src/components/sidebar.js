@@ -17,13 +17,18 @@ const NAV_ITEMS = [
   { label: 'Financeiro', href: 'financeiro.html', modulos: ['financeiro', 'caixa'] },
   { label: 'Gestão', href: 'gestao.html', modulos: ['gestao'] },
   { label: 'Configurações', href: 'configuracoes.html', modulos: ['configuracoes', 'usuarios', 'permissoes'] },
+  // PromoWhats: módulo próprio (mineração Shopee + publicação WhatsApp),
+  // dados isolados no schema afiliados (RLS + allowlist própria, não a
+  // matriz crm.papel_permissoes) — por isso sem `modulos` aqui: não cria
+  // dependência de nenhuma tabela do schema crm.
+  { label: 'PromoWhats', href: 'afiliados/dashboard.html', modulos: [] },
 ];
 
 // os 5 itens promovidos ao menu mobile, conforme Fase 8A resposta #3
 const MOBILE_PRIORITY = ['dashboard.html', 'clientes.html', 'pipeline.html', 'tarefas.html', 'agenda.html'];
 
 export function renderSidebar(container, { perm, usuarioNome, papelNome, paginaAtual }) {
-  const itensVisiveis = NAV_ITEMS.filter((item) => podeVisualizarAlgum(perm, item.modulos));
+  const itensVisiveis = NAV_ITEMS.filter((item) => item.modulos.length === 0 || podeVisualizarAlgum(perm, item.modulos));
 
   const linksHtml = itensVisiveis
     .map((item) => {

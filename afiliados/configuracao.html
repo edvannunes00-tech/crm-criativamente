@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuração — PromoWhats</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+  <style>
+    .agenda-row { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:0.5px solid var(--border); }
+    .agenda-row:last-child { border-bottom:none; }
+    .agenda-row select, .agenda-row input[type=time], .agenda-row input[type=number] {
+      padding:6px 8px; border-radius:var(--radius); border:0.5px solid var(--border-strong); background:var(--surface-2); font-size:12.5px; font-family:var(--font-mono);
+    }
+    .pause-banner { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px; border-radius: var(--radius); font-size: 13px; z-index: 60; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .toast.ok { background: var(--ok-soft); color: var(--ok); }
+    .toast.err { background: var(--danger-soft); color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">Configuração</div>
+          <div class="pagesub">"Eu configuro. A IA opera." — regras, agenda e modo de operação</div>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Automação</div>
+      <div class="card pause-banner">
+        <div>
+          <div style="font-size:13.5px; font-weight:500;">Automação geral</div>
+          <div style="font-size:12px; color:var(--ink-2)" id="pauseDesc">carregando…</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <button class="btn primary" id="rodadaManualBtn">Executar rodada manual agora</button>
+          <div class="switch" id="pauseSwitch" style="cursor:pointer"></div>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Agenda de publicação</div>
+      <div class="card" id="agendaLista"><div class="empty-state">Carregando agenda…</div></div>
+      <div class="card" style="margin-top:10px; padding:10px 16px;">
+        <div class="agenda-row" style="border-bottom:none; padding:0;">
+          <input type="time" id="novoHorario" value="09:00" />
+          <select id="novoGrupo"></select>
+          <input type="number" id="novaQtd" value="1" min="1" max="5" style="width:56px" />
+          <button class="btn primary" id="addHorarioBtn">Adicionar horário</button>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Grupos — modo de operação</div>
+      <div class="cfg-grid" id="grupos"><div class="empty-state">Carregando grupos…</div></div>
+
+      <div class="sectiontitle">Regras gerais</div>
+      <div class="card" id="regrasGerais" style="padding:.25rem 0"><div class="empty-state">Carregando…</div></div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'configuracao.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+    let GRUPOS = [];
+    let REGRAS = null;
+
+    await carregarTudo();
+
+    async function carregarTudo() {
+      const [{ data: grupos, error: e1 }, { data: regras, error: e2 }, { data: agenda, error: e3 }] = await Promise.all([
+        db.from('grupos').select('*').order('nome'),
+        db.from('regras_gerais').select('*').eq('id', 1).maybeSingle(),
+        db.from('agenda').select('*, grupos(nome)').order('horario'),
+      ]);
+
+      const err = e1 || e2 || e3;
+      if (err) {
+        if (await handleQueryError(err)) return;
+        document.getElementById('grupos').innerHTML = `<div class="empty-state">Não foi possível carregar: ${err.message}</div>`;
+        return;
+      }
+
+      GRUPOS = grupos || [];
+      REGRAS = regras;
+      renderPausa();
+      renderGrupos();
+      renderAgenda(agenda || []);
+      preencherSelectGrupos();
+      renderRegras(REGRAS);
+    }
+
+    function toast(kind, msg) {
+      const c = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      el.className = `toast ${kind}`;
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    function renderPausa() {
+      const sw = document.getElementById('pauseSwitch');
+      const desc = document.getElementById('pauseDesc');
+      const pausada = !!REGRAS?.automacao_pausada;
+      sw.className = 'switch' + (pausada ? ' off' : '');
+      desc.textContent = pausada
+        ? 'Pausada — o worker não publica nada até você reativar.'
+        : `Ativa — modo padrão: ${REGRAS?.modo_padrao === 'manual' ? 'manual (aprovação obrigatória)' : 'automático'}.`;
+      sw.onclick = async () => {
+        const { error } = await db.from('regras_gerais').update({ automacao_pausada: !pausada, updated_at: new Date().toISOString() }).eq('id', 1);
+        if (error) { toast('err', 'Não foi possível alterar: ' + error.message); return; }
+        toast('ok', pausada ? 'Automação reativada.' : 'Automação pausada.');
+        carregarTudo();
+      };
+    }
+
+    document.getElementById('rodadaManualBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('rodadaManualBtn');
+      btn.disabled = true;
+      btn.textContent = 'Solicitando…';
+      const { error } = await db.from('comandos').insert({ tipo: 'rodada_manual', solicitado_por: session.user.id });
+      btn.disabled = false;
+      btn.textContent = 'Executar rodada manual agora';
+      if (error) { toast('err', 'Não foi possível solicitar: ' + error.message); return; }
+      toast('ok', 'Rodada manual solicitada — o worker local processa na próxima verificação (até ~5 min).');
+    });
+
+    function renderGrupos() {
+      if (GRUPOS.length === 0) {
+        document.getElementById('grupos').innerHTML = '<div class="empty-state">Nenhum grupo cadastrado — sem dados.</div>';
+        return;
+      }
+      document.getElementById('grupos').innerHTML = GRUPOS.map(g => `
+        <div class="card cfg-card">
+          <div class="cfg-head">
+            <span class="cfg-name">${g.nome}</span>
+            <div class="switch ${g.ativo ? '' : 'off'}" data-toggle-ativo="${g.id}" style="cursor:pointer"></div>
+          </div>
+          <div class="cfg-row"><span>Nicho</span><span style="color:var(--ink)">${g.nicho || '—'}</span></div>
+          <div class="cfg-row">
+            <span>Modo</span>
+            <select data-modo="${g.id}">
+              <option value="automatico" ${g.modo === 'automatico' ? 'selected' : ''}>Automático</option>
+              <option value="manual" ${g.modo === 'manual' ? 'selected' : ''}>Manual (aprovar antes)</option>
+            </select>
+          </div>
+          <div class="cfg-row"><span>Score mínimo</span><span class="mono">${g.score_minimo ?? '—'}</span></div>
+          <div class="cfg-row"><span>Cooldown (h)</span><span class="mono">${g.cooldown_horas ?? '—'}</span></div>
+          <div class="cfg-row"><span>Máx. ofertas/hora</span><span class="mono">${g.max_ofertas_por_hora ?? '—'}</span></div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('[data-modo]').forEach(sel => {
+        sel.addEventListener('change', async () => {
+          const { error } = await db.from('grupos').update({ modo: sel.value }).eq('id', sel.dataset.modo);
+          if (error) toast('err', 'Erro ao salvar modo: ' + error.message);
+          else toast('ok', 'Modo atualizado.');
+        });
+      });
+      document.querySelectorAll('[data-toggle-ativo]').forEach(sw => {
+        sw.addEventListener('click', async () => {
+          const g = GRUPOS.find(x => x.id === sw.dataset.toggleAtivo);
+          const { error } = await db.from('grupos').update({ ativo: !g.ativo }).eq('id', g.id);
+          if (error) { toast('err', 'Erro: ' + error.message); return; }
+          toast('ok', 'Grupo atualizado.');
+          carregarTudo();
+        });
+      });
+    }
+
+    function renderAgenda(agenda) {
+      if (agenda.length === 0) {
+        document.getElementById('agendaLista').innerHTML = '<div class="empty-state">Nenhum horário configurado ainda — sem dados.</div>';
+        return;
+      }
+      document.getElementById('agendaLista').innerHTML = agenda.map(a => `
+        <div class="agenda-row">
+          <span class="mono" style="width:52px">${a.horario.slice(0, 5)}</span>
+          <span style="flex:1">${a.grupos?.nome || '—'}</span>
+          <span class="mono" style="width:70px">${a.quantidade} oferta${a.quantidade > 1 ? 's' : ''}</span>
+          <div class="switch ${a.ativo ? '' : 'off'}" data-toggle-horario="${a.id}" style="cursor:pointer"></div>
+          <button class="btn danger" data-del-horario="${a.id}" style="padding:4px 10px; font-size:11.5px;">Remover</button>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('[data-toggle-horario]').forEach(sw => {
+        sw.addEventListener('click', async () => {
+          const id = sw.dataset.toggleHorario;
+          const atual = agenda.find(a => a.id === id);
+          const { error } = await db.from('agenda').update({ ativo: !atual.ativo }).eq('id', id);
+          if (error) { toast('err', 'Erro: ' + error.message); return; }
+          carregarTudo();
+        });
+      });
+      document.querySelectorAll('[data-del-horario]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remover este horário da agenda?')) return;
+          const { error } = await db.from('agenda').delete().eq('id', btn.dataset.delHorario);
+          if (error) { toast('err', 'Erro: ' + error.message); return; }
+          toast('ok', 'Horário removido.');
+          carregarTudo();
+        });
+      });
+    }
+
+    function preencherSelectGrupos() {
+      document.getElementById('novoGrupo').innerHTML = GRUPOS.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+    }
+
+    document.getElementById('addHorarioBtn').addEventListener('click', async () => {
+      const horario = document.getElementById('novoHorario').value;
+      const grupo_id = document.getElementById('novoGrupo').value;
+      const quantidade = Number(document.getElementById('novaQtd').value) || 1;
+      if (!horario || !grupo_id) { toast('err', 'Preencha horário e grupo.'); return; }
+      const { error } = await db.from('agenda').insert({ horario, grupo_id, quantidade, ativo: true });
+      if (error) { toast('err', 'Erro ao adicionar: ' + error.message); return; }
+      toast('ok', 'Horário adicionado.');
+      carregarTudo();
+    });
+
+    function renderRegras(r) {
+      if (!r) {
+        document.getElementById('regrasGerais').innerHTML = '<div class="empty-state">Sem configuração geral cadastrada — sem dados.</div>';
+        return;
+      }
+      document.getElementById('regrasGerais').innerHTML = `
+        <div class="list-row" style="justify-content:space-between">
+          <span style="font-size:13px">Ciclo máximo de mineração</span>
+          <span class="mono" style="font-size:13px">${r.ciclo_maximo_minutos} min</span>
+        </div>
+        <div class="list-row" style="justify-content:space-between">
+          <span style="font-size:13px">Máx. de grupos para o mesmo produto por ciclo</span>
+          <span class="mono" style="font-size:13px">${r.max_grupos_por_produto_por_ciclo}</span>
+        </div>
+        <div class="list-row" style="justify-content:space-between; border-bottom:none">
+          <span style="font-size:13px">Repetição antecipada exige melhora de preço</span>
+          <div class="switch ${r.repeticao_antecipada_exige_melhora_preco ? '' : 'off'}"></div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

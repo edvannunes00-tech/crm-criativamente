@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PromoWhats — CRM Criativamente</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">PromoWhats</div>
+          <div class="pagesub">Visão geral — mineração Shopee, aprovação e publicação automática nos grupos</div>
+        </div>
+        <div class="cyclepill"><span class="dot" id="statusDot"></span><span id="resumo">carregando…</span></div>
+      </div>
+
+      <div class="kpirow" id="kpis"></div>
+
+      <div class="sectiontitle">Atalhos</div>
+      <div class="cfg-grid">
+        <a class="card cfg-card" href="/afiliados/estoque.html" style="cursor:pointer">
+          <div class="cfg-name">Estoque</div>
+          <div style="font-size:12.5px; color:var(--ink-2); margin-top:4px;">Ver tudo que o radar já encontrou</div>
+        </a>
+        <a class="card cfg-card" href="/afiliados/aprovar.html" style="cursor:pointer">
+          <div class="cfg-name">Aprovar / rejeitar</div>
+          <div style="font-size:12.5px; color:var(--ink-2); margin-top:4px;">Decidir sobre finalistas pendentes</div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'dashboard.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+    const { data, error } = await db.from('ofertas').select('status');
+
+    const dot = document.getElementById('statusDot');
+    if (error) {
+      if (await handleQueryError(error)) { /* redirecionou */ }
+      else document.getElementById('resumo').textContent = 'erro ao carregar';
+    } else {
+      dot.className = 'dot';
+      const ofertas = data || [];
+      const publicadas = ofertas.filter(o => o.status === 'PUBLISHED').length;
+      const finalistas = ofertas.filter(o => o.status === 'FINALISTA').length;
+      const aguardando = ofertas.filter(o => o.status === 'APROVADO_AGUARDANDO_PUBLICACAO').length;
+      const rejeitadas = ofertas.filter(o => o.status === 'REJECTED').length;
+      document.getElementById('resumo').textContent = `${ofertas.length} no estoque`;
+      document.getElementById('kpis').innerHTML = [
+        ['No estoque', ofertas.length],
+        ['Publicadas', publicadas],
+        ['Aguardando publicação', aguardando],
+        ['Finalistas na fila', finalistas],
+        ['Rejeitadas', rejeitadas],
+      ].map(([label, value]) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`).join('');
+    }
+  </script>
+</body>
+</html>

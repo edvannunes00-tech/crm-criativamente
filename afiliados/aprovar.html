@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aprovar/rejeitar — PromoWhats</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+  <style>
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(33,31,23,0.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    .modal-card { width: 380px; background: var(--surface); border-radius: var(--radius-lg); border: 0.5px solid var(--border); padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
+    .modal-card textarea { width: 100%; min-height: 70px; padding: 9px 12px; border-radius: var(--radius); border: 0.5px solid var(--border-strong); background: var(--surface-2); font-size: 13px; font-family: var(--font-sans); resize: vertical; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px; border-radius: var(--radius); font-size: 13px; z-index: 60; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .toast.ok { background: var(--ok-soft); color: var(--ok); }
+    .toast.err { background: var(--danger-soft); color: var(--danger); }
+    .card-error { font-size: 12px; color: var(--danger); margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">Aprovar / rejeitar</div>
+          <div class="pagesub">Fila real de ofertas finalistas — ação real sobre afiliados.ofertas</div>
+        </div>
+        <div class="cyclepill"><span class="dot" id="statusDot"></span><span id="resumo">carregando…</span></div>
+      </div>
+
+      <div class="card" style="padding:10px 16px; margin-bottom:1rem; font-size:12.5px; color:var(--ink-2);">
+        Aprovar move a oferta para <b>aguardando publicação</b> — o worker local publica de verdade no WhatsApp.
+      </div>
+
+      <div id="fila"><div class="empty-state">Carregando fila…</div></div>
+    </div>
+  </div>
+
+  <div id="modalContainer"></div>
+  <div id="toastContainer"></div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+    import { money, marketplaceLabel } from '/afiliados/lib/format.js';
+    import { ICON_PHOTO } from '/afiliados/lib/icons.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'aprovar.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+    const dot = document.getElementById('statusDot');
+    const fila = document.getElementById('fila');
+    const resumo = document.getElementById('resumo');
+
+    async function carregarFila() {
+      fila.innerHTML = '<div class="empty-state">Carregando fila…</div>';
+      const { data, error } = await db.from('ofertas').select('*').eq('status', 'FINALISTA').order('score_oferta', { ascending: false });
+
+      if (error) {
+        if (await handleQueryError(error)) return;
+        fila.innerHTML = `<div class="empty-state">Não foi possível carregar a fila: ${error.message}</div>`;
+        resumo.textContent = 'erro ao carregar';
+        return;
+      }
+
+      dot.className = 'dot';
+      const finalistas = data || [];
+      resumo.textContent = `${finalistas.length} na fila`;
+
+      if (finalistas.length === 0) {
+        fila.innerHTML = '<div class="empty-state">Nenhuma oferta com status FINALISTA agora — sem dados.</div>';
+        return;
+      }
+
+      fila.innerHTML = finalistas.map(renderCard).join('');
+      wireActions();
+    }
+
+    function renderCard(o) {
+      return `
+        <div class="card review" style="margin-bottom: 1rem;" data-id="${o.id}" data-status="${o.status}">
+          <div class="review-media">
+            <div class="review-img">${ICON_PHOTO}</div>
+            <span class="badge ${o.marketplace === 'shopee' ? 'shp' : 'ml'}">${marketplaceLabel(o.marketplace)}</span>
+          </div>
+          <div class="review-body">
+            <p class="review-title">${escapeHtml(o.produto)}</p>
+            <div class="rowmeta" style="margin-bottom:2px">
+              <span class="pill neu">${o.nicho || '—'}</span>
+              <span class="pill neu">→ ${o.grupo_destino || '—'}</span>
+              ${o.score_oferta != null ? `<span class="score">score ${o.score_oferta}</span>` : ''}
+            </div>
+            <div class="review-stats">
+              <div><div class="stat-label">Preço</div><div class="stat-value">${money(o.preco_atual)}</div></div>
+              <div><div class="stat-label">Desconto</div><div class="stat-value">${o.calculated_discount != null ? o.calculated_discount + '%' : '—'}</div></div>
+              <div><div class="stat-label">Avaliação</div><div class="stat-value">${o.avaliacao ?? '—'} (${o.num_avaliacoes ?? '—'})</div></div>
+            </div>
+            <div class="review-actions">
+              <button class="btn primary" data-action="aprovar">Aprovar</button>
+              <button class="btn danger" data-action="rejeitar">Rejeitar</button>
+            </div>
+            <div class="card-error" hidden></div>
+          </div>
+        </div>`;
+    }
+
+    function wireActions() {
+      document.querySelectorAll('.review[data-id]').forEach(card => {
+        const id = card.dataset.id;
+        const statusEsperado = card.dataset.status;
+        card.querySelector('[data-action="aprovar"]').addEventListener('click', () => aprovar(card, id, statusEsperado));
+        card.querySelector('[data-action="rejeitar"]').addEventListener('click', () => abrirModalRejeitar(card, id, statusEsperado));
+      });
+    }
+
+    async function aprovar(card, id, statusEsperado) {
+      setLoading(card, true, 'aprovar');
+      const { error } = await db.rpc('aprovar_oferta', { p_oferta_id: id, p_status_esperado: statusEsperado });
+      if (error) return handleAcaoErro(card, error);
+      toast('ok', 'Oferta aprovada — aguardando publicação pelo worker.');
+      removerDaFila(card);
+    }
+
+    function abrirModalRejeitar(card, id, statusEsperado) {
+      const container = document.getElementById('modalContainer');
+      container.innerHTML = `
+        <div class="modal-backdrop" id="modalBackdrop">
+          <div class="modal-card">
+            <div style="font-size:15px; font-weight:500;">Rejeitar oferta</div>
+            <div style="font-size:12.5px; color:var(--ink-2)">O motivo é opcional, mas fica registrado no histórico da oferta.</div>
+            <textarea id="motivoInput" placeholder="Motivo (opcional)"></textarea>
+            <div class="modal-actions">
+              <button class="btn" id="cancelarModal">Cancelar</button>
+              <button class="btn danger" id="confirmarModal">Confirmar rejeição</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('cancelarModal').addEventListener('click', () => { container.innerHTML = ''; });
+      document.getElementById('modalBackdrop').addEventListener('click', (ev) => { if (ev.target.id === 'modalBackdrop') container.innerHTML = ''; });
+      document.getElementById('confirmarModal').addEventListener('click', async () => {
+        const motivo = document.getElementById('motivoInput').value.trim() || null;
+        container.innerHTML = '';
+        await rejeitar(card, id, statusEsperado, motivo);
+      });
+    }
+
+    async function rejeitar(card, id, statusEsperado, motivo) {
+      setLoading(card, true, 'rejeitar');
+      const { error } = await db.rpc('rejeitar_oferta', { p_oferta_id: id, p_status_esperado: statusEsperado, p_motivo: motivo });
+      if (error) return handleAcaoErro(card, error);
+      toast('ok', 'Oferta rejeitada.');
+      removerDaFila(card);
+    }
+
+    function handleAcaoErro(card, error) {
+      setLoading(card, false);
+      const errBox = card.querySelector('.card-error');
+      if ((error.message || '').includes('CONFLITO_ESTADO')) {
+        errBox.textContent = 'Esta oferta já foi alterada por outro processo. Recarregando a fila…';
+        errBox.hidden = false;
+        toast('err', 'Conflito: a oferta já tinha sido atualizada. Fila recarregada.');
+        setTimeout(carregarFila, 1200);
+      } else {
+        errBox.textContent = `Erro: ${error.message}`;
+        errBox.hidden = false;
+        toast('err', 'Não foi possível concluir a ação.');
+      }
+    }
+
+    function setLoading(card, isLoading, action) {
+      card.querySelectorAll('button').forEach(b => b.disabled = isLoading);
+      if (isLoading && action) {
+        const btn = card.querySelector(`[data-action="${action}"]`);
+        btn.dataset.originalText = btn.textContent;
+        btn.textContent = action === 'aprovar' ? 'Aprovando…' : 'Rejeitando…';
+      } else {
+        card.querySelectorAll('button[data-original-text]').forEach(b => { b.textContent = b.dataset.originalText; });
+      }
+    }
+
+    function removerDaFila(card) {
+      card.style.transition = 'opacity .2s';
+      card.style.opacity = '0';
+      setTimeout(() => {
+        card.remove();
+        const restantes = document.querySelectorAll('.review[data-id]').length;
+        resumo.textContent = `${restantes} na fila`;
+        if (restantes === 0) fila.innerHTML = '<div class="empty-state">Fila vazia — todas as ofertas finalistas foram decididas.</div>';
+      }, 200);
+    }
+
+    function toast(kind, msg) {
+      const container = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      el.className = `toast ${kind}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s ?? '';
+      return d.innerHTML;
+    }
+
+    carregarFila();
+  </script>
+</body>
+</html>

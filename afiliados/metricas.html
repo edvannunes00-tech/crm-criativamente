@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Métricas — PromoWhats</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
+  <link rel="stylesheet" href="/afiliados/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="pagetitle">Métricas</div>
+          <div class="pagesub">Só dados reais de afiliados.ofertas e afiliados.execucoes_ciclo</div>
+        </div>
+      </div>
+
+      <div class="kpirow" id="kpis"></div>
+
+      <div class="metrics-grid">
+        <div class="card barwrap">
+          <div class="sectiontitle" style="margin-top:0">Publicações por grupo</div>
+          <div id="barsGrupo"></div>
+        </div>
+        <div class="card" style="padding:1.1rem 1.25rem">
+          <div class="sectiontitle" style="margin-top:0">Motivos de descarte</div>
+          <div id="motivosDescarte"></div>
+        </div>
+      </div>
+
+      <div class="sectiontitle">Ciclos de mineração/publicação</div>
+      <div class="card" id="ciclos" style="padding:1.1rem 1.25rem"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { requireSession, handleQueryError } from '/src/lib/session.js';
+    import { renderSidebar } from '/afiliados/lib/sidebar.js';
+
+    const session = await requireSession();
+    if (!session) throw new Error('sem sessão');
+    renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'metricas.html', usuarioEmail: session.user.email });
+
+    const db = supabase.schema('afiliados');
+    const [{ data: ofertas, error: errOfertas }, { data: ciclos, error: errCiclos }] = await Promise.all([
+      db.from('ofertas').select('*'),
+      db.from('execucoes_ciclo').select('*').order('iniciado_em', { ascending: false }),
+    ]);
+
+    if (errOfertas || errCiclos) {
+      const err = errOfertas || errCiclos;
+      if (!(await handleQueryError(err))) {
+        document.getElementById('kpis').innerHTML = `<div class="empty-state">Não foi possível carregar métricas: ${err.message}</div>`;
+      }
+    } else {
+      renderKpis(ofertas || []);
+      renderBarsGrupo(ofertas || []);
+      renderMotivos(ofertas || []);
+      renderCiclos(ciclos || []);
+    }
+
+    function kpi(label, value, delta) {
+      return `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${delta ? `<div class="kpi-delta">${delta}</div>` : ''}</div>`;
+    }
+
+    function renderKpis(ofertas) {
+      const publicadas = ofertas.filter(o => o.status === 'PUBLISHED').length;
+      const aguardando = ofertas.filter(o => o.status === 'APROVADO_AGUARDANDO_PUBLICACAO').length;
+      const finalistas = ofertas.filter(o => o.status === 'FINALISTA').length;
+      const rejeitadas = ofertas.filter(o => o.status === 'REJECTED').length;
+      document.getElementById('kpis').innerHTML = [
+        kpi('No estoque (total)', ofertas.length),
+        kpi('Publicadas', publicadas),
+        kpi('Aguardando publicação', aguardando),
+        kpi('Finalistas na fila', finalistas),
+        kpi('Rejeitadas', rejeitadas),
+      ].join('');
+    }
+
+    function renderBarsGrupo(ofertas) {
+      const publicadas = ofertas.filter(o => o.status === 'PUBLISHED' && o.grupo_destino);
+      if (publicadas.length === 0) {
+        document.getElementById('barsGrupo').innerHTML = '<div class="empty-state">Sem publicações ainda — sem dados.</div>';
+        return;
+      }
+      const porGrupo = {};
+      publicadas.forEach(o => { porGrupo[o.grupo_destino] = (porGrupo[o.grupo_destino] || 0) + 1; });
+      const max = Math.max(...Object.values(porGrupo));
+      document.getElementById('barsGrupo').innerHTML = Object.entries(porGrupo)
+        .sort((a, b) => b[1] - a[1])
+        .map(([grupo, n]) => `
+          <div class="bar-row">
+            <span class="bar-label">${grupo}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${(n / max) * 100}%"></div></div>
+            <span class="bar-val">${n}</span>
+          </div>
+        `).join('');
+    }
+
+    function renderMotivos(ofertas) {
+      const rejeitadas = ofertas.filter(o => o.status === 'REJECTED' && (o.motivo_descarte || o.motivo_rejeicao_manual));
+      if (rejeitadas.length === 0) {
+        document.getElementById('motivosDescarte').innerHTML = '<div class="empty-state">Sem descartes com motivo registrado — sem dados.</div>';
+        return;
+      }
+      const porMotivo = {};
+      rejeitadas.forEach(o => {
+        const motivo = o.motivo_descarte || o.motivo_rejeicao_manual;
+        porMotivo[motivo] = (porMotivo[motivo] || 0) + 1;
+      });
+      document.getElementById('motivosDescarte').innerHTML = Object.entries(porMotivo)
+        .map(([motivo, n]) => `<div class="reason-row"><span style="color:var(--ink-2)">${motivo.slice(0, 70)}${motivo.length > 70 ? '…' : ''}</span><span class="mono">${n}</span></div>`)
+        .join('');
+    }
+
+    function renderCiclos(ciclos) {
+      if (ciclos.length === 0) {
+        document.getElementById('ciclos').innerHTML = '<div class="empty-state">Nenhum ciclo registrado em afiliados.execucoes_ciclo ainda — sem dados.</div>';
+        return;
+      }
+      const comDuracao = ciclos.filter(c => c.duracao_segundos != null);
+      const mediaSeg = comDuracao.length ? comDuracao.reduce((s, c) => s + Number(c.duracao_segundos), 0) / comDuracao.length : null;
+      document.getElementById('ciclos').innerHTML = `
+        <div class="kpirow" style="margin-bottom:1rem">
+          ${kpi('Ciclos registrados', ciclos.length)}
+          ${kpi('Duração média', mediaSeg != null ? `${Math.round(mediaSeg)}s` : 'sem dados')}
+        </div>
+      ` + ciclos.slice(0, 10).map(c => `
+        <div class="list-row">
+          <div class="rowmain">
+            <div class="rowtitle">${new Date(c.iniciado_em).toLocaleString('pt-BR')}</div>
+            <div class="rowmeta">
+              <span>${c.candidatos ?? '—'} candidatos</span>
+              <span>${c.finalistas ?? '—'} finalistas</span>
+              <span>${c.publicados ?? '—'} publicados</span>
+              <span>${c.duracao_segundos != null ? c.duracao_segundos + 's' : 'sem duração'}</span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
