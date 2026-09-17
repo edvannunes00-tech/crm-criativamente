@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Busca — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .resultado-grupo { margin-bottom: 24px; }
+    .resultado-grupo-titulo { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--gray-2); margin-bottom: 8px; }
+    .resultado-item { display: block; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 6px; text-decoration: none; color: var(--white); }
+    .resultado-item:hover { border-color: var(--line-strong); }
+    .resultado-item .titulo { font-weight: 700; font-size: 13.5px; }
+    .resultado-item .trecho { font-size: 12px; color: var(--gray-1); margin-top: 2px; }
+    .resultado-item .data { font-size: 11px; color: var(--gray-2); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+        <div class="field mb-4">
+          <input type="search" id="busca" placeholder="Buscar clientes, oportunidades, contratos, projetos, tarefas, documentos, observações..." style="font-size:15px; padding:14px;" />
+        </div>
+        <div id="resultados"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarData, escapeHtml } from '/src/lib/format.js';
+
+    await initPage({ paginaAtual: 'busca.html', breadcrumb: 'CRM / Busca', title: 'Busca' });
+
+    const params = new URLSearchParams(window.location.search);
+    const buscaInput = document.getElementById('busca');
+    buscaInput.value = params.get('q') || '';
+
+    // Busca simples via ILIKE (Postgres) em cada tabela relevante --
+    // suficiente pro volume atual do CRM. RLS de cada tabela ja garante
+    // isolamento por empresa/permissao automaticamente, sem precisar de
+    // nenhuma logica extra aqui (as consultas rodam com a sessao do
+    // proprio usuario, nao com service_role).
+    async function buscar(termo) {
+      const el = document.getElementById('resultados');
+      if (!termo || termo.trim().length < 2) {
+        el.innerHTML = `<div class="empty-state"><p>Digite pelo menos 2 caracteres.</p></div>`;
+        return;
+      }
+      el.innerHTML = `<div class="skeleton skeleton-row"></div>`;
+      const like = `%${termo}%`;
+
+      const [clientes, oportunidades, contratos, projetos, tarefas, atividades, documentos] = await Promise.all([
+        supabase.from('contatos').select('id, nome, whatsapp, email').or(`nome.ilike.${like},email.ilike.${like},whatsapp.ilike.${like}`).limit(10),
+        supabase.from('oportunidades').select('id, titulo, created_at').ilike('titulo', like).limit(10),
+        supabase.from('contratos').select('id, titulo, status, created_at').ilike('titulo', like).limit(10),
+        supabase.from('projetos').select('id, nome, status, created_at').ilike('nome', like).limit(10),
+        supabase.from('tarefas').select('id, titulo, prazo').ilike('titulo', like).limit(10),
+        supabase.from('atividades').select('id, titulo, descricao, tipo, contato_id, oportunidade_id, projeto_id, contrato_id, created_at').or(`titulo.ilike.${like},descricao.ilike.${like}`).order('created_at', { ascending: false }).limit(10),
+        supabase.from('documentos').select('id, nome_arquivo, entidade_tipo, entidade_id, created_at').ilike('nome_arquivo', like).limit(10),
+      ]);
+
+      const grupos = [];
+
+      if (clientes.data?.length) grupos.push({
+        titulo: 'Clientes', itens: clientes.data.map((c) => ({
+          href: `/ficha-cliente.html?id=${c.id}`, titulo: c.nome, trecho: c.email || c.whatsapp || '', data: null,
+        })),
+      });
+      if (oportunidades.data?.length) grupos.push({
+        titulo: 'Oportunidades', itens: oportunidades.data.map((o) => ({
+          href: `/ficha-oportunidade.html?id=${o.id}`, titulo: o.titulo, trecho: '', data: o.created_at,
+        })),
+      });
+      if (contratos.data?.length) grupos.push({
+        titulo: 'Contratos', itens: contratos.data.map((c) => ({
+          href: `/ficha-contrato.html?id=${c.id}`, titulo: c.titulo, trecho: `Status: ${c.status}`, data: c.created_at,
+        })),
+      });
+      if (projetos.data?.length) grupos.push({
+        titulo: 'Projetos', itens: projetos.data.map((p) => ({
+          href: `/ficha-projeto.html?id=${p.id}`, titulo: p.nome, trecho: `Status: ${p.status}`, data: p.created_at,
+        })),
+      });
+      if (tarefas.data?.length) grupos.push({
+        titulo: 'Tarefas', itens: tarefas.data.map((t) => ({
+          href: `/tarefas.html`, titulo: t.titulo, trecho: t.prazo ? `Prazo: ${formatarData(t.prazo)}` : '', data: null,
+        })),
+      });
+      if (atividades.data?.length) grupos.push({
+        titulo: 'Atividades / Observações', itens: atividades.data.map((a) => {
+          const href = a.contrato_id ? `/ficha-contrato.html?id=${a.contrato_id}`
+            : a.projeto_id ? `/ficha-projeto.html?id=${a.projeto_id}`
+            : a.oportunidade_id ? `/ficha-oportunidade.html?id=${a.oportunidade_id}`
+            : a.contato_id ? `/ficha-cliente.html?id=${a.contato_id}` : '#';
+          return { href, titulo: a.titulo, trecho: a.descricao || '', data: a.created_at };
+        }),
+      });
+      if (documentos.data?.length) grupos.push({
+        titulo: 'Documentos', itens: documentos.data.map((d) => {
+          const hrefPorTipo = { contrato: 'ficha-contrato', projeto: 'ficha-projeto', contato: 'ficha-cliente', oportunidade: 'ficha-oportunidade' };
+          const pagina = hrefPorTipo[d.entidade_tipo];
+          return { href: pagina ? `/${pagina}.html?id=${d.entidade_id}` : '#', titulo: d.nome_arquivo, trecho: `Encontrado em: ${d.entidade_tipo}`, data: d.created_at };
+        }),
+      });
+
+      if (grupos.length === 0) {
+        el.innerHTML = `<div class="empty-state"><p>Nenhum resultado para "${escapeHtml(termo)}".</p></div>`;
+        return;
+      }
+
+      el.innerHTML = grupos.map((g) => `
+        <div class="resultado-grupo">
+          <div class="resultado-grupo-titulo">${g.titulo} (${g.itens.length})</div>
+          ${g.itens.map((i) => `
+            <a class="resultado-item" href="${i.href}">
+              <div class="titulo">${escapeHtml(i.titulo)}</div>
+              ${i.trecho ? `<div class="trecho">${escapeHtml(i.trecho)}</div>` : ''}
+              ${i.data ? `<div class="data">${formatarData(i.data, true)}</div>` : ''}
+            </a>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    buscaInput.addEventListener('input', (e) => {
+      clearTimeout(window.__buscaGlobalTimeout);
+      window.__buscaGlobalTimeout = setTimeout(() => buscar(e.target.value), 350);
+    });
+
+    if (buscaInput.value) buscar(buscaInput.value);
+  </script>
+</body>
+</html>

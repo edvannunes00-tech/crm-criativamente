@@ -78,6 +78,7 @@
             <option value="">Nenhum (tarefa interna)</option>
             <option value="contato">Contato</option>
             <option value="oportunidade">Oportunidade</option>
+            <option value="contrato">Contrato</option>
             <option value="projeto">Projeto</option>
           </select>
         </div>
@@ -106,7 +107,7 @@
     let filtroDono = 'minhas';
     let filtroStatus = 'abertas';
 
-    const VINCULO_LABEL = { contato: 'Contato', oportunidade: 'Oportunidade', projeto: 'Projeto', lead: 'Contato', cliente: 'Contato', interna: 'Interna', projeto_etapa: 'Etapa de projeto' };
+    const VINCULO_LABEL = { contato: 'Contato', oportunidade: 'Oportunidade', contrato: 'Contrato', projeto: 'Projeto', lead: 'Contato', cliente: 'Contato', interna: 'Interna', projeto_etapa: 'Etapa de projeto' };
 
     async function carregarLista() {
       const el = document.getElementById('listaTarefas');
@@ -232,7 +233,7 @@
     // (o clique-para-abrir-calendário agora é automático em toda a
     // aplicação, ativado pelo initPage() — não precisa de código aqui)
 
-    const TABELA_POR_TIPO = { contato: { tabela: 'contatos', campo: 'nome' }, oportunidade: { tabela: 'oportunidades', campo: 'titulo' }, projeto: { tabela: 'projetos', campo: 'nome' } };
+    const TABELA_POR_TIPO = { contato: { tabela: 'contatos', campo: 'nome' }, oportunidade: { tabela: 'oportunidades', campo: 'titulo' }, contrato: { tabela: 'contratos', campo: 'titulo' }, projeto: { tabela: 'projetos', campo: 'nome' } };
 
     document.getElementById('fBuscaVinculo').addEventListener('input', async (e) => {
       const tipo = document.getElementById('fVinculoTipo').value;

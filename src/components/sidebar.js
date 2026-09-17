@@ -8,6 +8,9 @@ import { podeVisualizar, podeVisualizarAlgum, logout } from '../lib/session.js';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', href: 'dashboard.html', modulos: ['dashboard'], mobileIcon: '⌂' },
+  // Busca so consulta tabelas que o usuario ja tem RLS pra ver -- nao
+  // precisa de gate de permissao proprio, sem modulos.
+  { label: 'Busca', href: 'busca.html', modulos: [] },
   { label: 'Clientes', href: 'clientes.html', modulos: ['leads', 'clientes'], mobileIcon: '☺' },
   { label: 'Pipeline', href: 'pipeline.html', modulos: ['pipeline', 'oportunidades'], mobileIcon: '◧' },
   { label: 'Contratos', href: 'contratos.html', modulos: ['contratos'] },

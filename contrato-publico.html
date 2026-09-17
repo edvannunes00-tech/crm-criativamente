@@ -177,16 +177,104 @@
           });
           const body = await resp.json();
           if (!body.ok) { renderIndisponivel(); return; }
-          conteudo.innerHTML = `
-            <div class="card" style="text-align:center;">
-              <div style="font-size:32px; margin-bottom:12px;">✓</div>
-              <p style="font-size:15px; font-weight:700;">Dados confirmados com sucesso!</p>
-              <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Agora é só aguardar os próximos passos da equipe Criativamente para a formalização da assinatura.</p>
-            </div>
-          `;
+          renderAssinatura();
         } catch {
           alert('Não foi possível confirmar agora. Tente novamente.');
           btn.disabled = false; btn.textContent = 'Confirmar e continuar';
+        }
+      });
+    }
+
+    function renderAssinatura() {
+      conteudo.innerHTML = `
+        <div class="passo-label">Assinatura</div>
+        <div class="card">
+          <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
+          <canvas id="canvasAssinatura" style="width:100%; height:180px; background:var(--near-black); border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
+          <div class="flex gap-2 mt-2">
+            <button class="btn btn-secondary btn-sm" id="btnLimparAssinatura">Limpar</button>
+            <button class="btn btn-primary btn-sm" id="btnConfirmarAssinatura" disabled style="flex:1;">Confirmar assinatura</button>
+          </div>
+          <p class="text-muted mt-4" style="font-size:11px; line-height:1.5;">
+            Esta é uma assinatura eletrônica simples — evidência do seu aceite dentro deste fluxo, não uma assinatura digital
+            certificada (ICP-Brasil) nem necessariamente equivalente a uma assinatura eletrônica qualificada.
+          </p>
+        </div>
+      `;
+
+      const canvas = document.getElementById('canvasAssinatura');
+      const ctx2d = canvas.getContext('2d');
+      // canvas em CSS pixels vs pixels reais -- ajusta pra desenho nitido
+      // e coordenadas corretas em qualquer tamanho de tela.
+      function ajustarTamanhoCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        ctx2d.lineWidth = 2;
+        ctx2d.lineCap = 'round';
+        ctx2d.strokeStyle = '#F5F5F2';
+      }
+      ajustarTamanhoCanvas();
+
+      let desenhando = false;
+      let temTraco = false;
+
+      function posicao(evento) {
+        const rect = canvas.getBoundingClientRect();
+        const ponto = evento.touches ? evento.touches[0] : evento;
+        return { x: ponto.clientX - rect.left, y: ponto.clientY - rect.top };
+      }
+      function iniciar(evento) {
+        evento.preventDefault();
+        desenhando = true;
+        const p = posicao(evento);
+        ctx2d.beginPath();
+        ctx2d.moveTo(p.x, p.y);
+      }
+      function mover(evento) {
+        if (!desenhando) return;
+        evento.preventDefault();
+        const p = posicao(evento);
+        ctx2d.lineTo(p.x, p.y);
+        ctx2d.stroke();
+        if (!temTraco) { temTraco = true; document.getElementById('btnConfirmarAssinatura').disabled = false; }
+      }
+      function parar() { desenhando = false; }
+
+      canvas.addEventListener('mousedown', iniciar);
+      canvas.addEventListener('mousemove', mover);
+      window.addEventListener('mouseup', parar);
+      canvas.addEventListener('touchstart', iniciar, { passive: false });
+      canvas.addEventListener('touchmove', mover, { passive: false });
+      canvas.addEventListener('touchend', parar);
+
+      document.getElementById('btnLimparAssinatura').addEventListener('click', () => {
+        ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+        temTraco = false;
+        document.getElementById('btnConfirmarAssinatura').disabled = true;
+      });
+
+      document.getElementById('btnConfirmarAssinatura').addEventListener('click', async () => {
+        const btn = document.getElementById('btnConfirmarAssinatura');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        try {
+          const imagemBase64 = canvas.toDataURL('image/png');
+          const resp = await fetch(FUNCTION_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, acao: 'assinar', imagem: imagemBase64 }),
+          });
+          const body = await resp.json();
+          if (!body.ok) { renderIndisponivel(); return; }
+          conteudo.innerHTML = `
+            <div class="card" style="text-align:center;">
+              <div style="font-size:32px; margin-bottom:12px;">✓</div>
+              <p style="font-size:15px; font-weight:700;">Assinatura registrada com sucesso!</p>
+              <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Agora é só aguardar os próximos passos da equipe Criativamente para a validação final do contrato.</p>
+            </div>
+          `;
+        } catch {
+          alert('Não foi possível registrar a assinatura agora. Tente novamente.');
+          btn.disabled = false; btn.textContent = 'Confirmar assinatura';
         }
       });
     }

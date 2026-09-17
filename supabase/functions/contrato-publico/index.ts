@@ -120,11 +120,57 @@ interface DadosCliente {
 function mapaErroNegocio(mensagem: string): string {
   if (mensagem.includes("link_indisponivel")) return "link_indisponivel";
   if (mensagem.includes("dados_nao_preenchidos")) return "dados_nao_preenchidos";
+  if (mensagem.includes("assinatura_ja_registrada")) return "assinatura_ja_registrada";
   return "erro_desconhecido";
 }
 
+async function handleAssinar(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin>, tokenHash: string, imagemBase64: string): Promise<Response> {
+  // Resolve empresa/contrato via SELECT direto (sem efeito colateral --
+  // diferente de registrar_acesso_link_contrato, que mexe em access_count).
+  const { data: link } = await supabaseAdmin
+    .from("contrato_links")
+    .select("empresa_id, contrato_id, status")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (!link || link.status !== "confirmado") {
+    return jsonResponse({ ok: false, motivo: "link_indisponivel" }, 200);
+  }
+
+  let bytes: Uint8Array;
+  try {
+    const base64Limpo = imagemBase64.replace(/^data:image\/png;base64,/, "");
+    bytes = Uint8Array.from(atob(base64Limpo), (c) => c.charCodeAt(0));
+  } catch {
+    return jsonResponse({ error: "Imagem de assinatura invalida" }, 400);
+  }
+  // Limite generoso pra um desenho simples (evita abuso de payload gigante).
+  if (bytes.length > 2 * 1024 * 1024) {
+    return jsonResponse({ error: "Imagem de assinatura muito grande" }, 400);
+  }
+
+  const storagePath = `${link.empresa_id}/contratos/${link.contrato_id}/assinatura-cliente-${Date.now()}.png`;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("documentos-internos")
+    .upload(storagePath, bytes, { contentType: "image/png", upsert: false });
+  if (uploadError) {
+    return jsonResponse({ error: "Falha ao salvar a assinatura." }, 500);
+  }
+
+  const { error: registroError } = await supabaseAdmin.rpc("registrar_assinatura_contrato", {
+    p_token_hash: tokenHash,
+    p_storage_path: storagePath,
+  });
+
+  if (registroError) {
+    return jsonResponse({ ok: false, motivo: mapaErroNegocio(registroError.message) }, 200);
+  }
+
+  return jsonResponse({ ok: true }, 200);
+}
+
 async function handlePost(req: Request): Promise<Response> {
-  let body: { token?: string; acao?: string; dados?: DadosCliente };
+  let body: { token?: string; acao?: string; dados?: DadosCliente; imagem?: string };
   try {
     body = await req.json();
   } catch {
@@ -135,8 +181,8 @@ async function handlePost(req: Request): Promise<Response> {
   if (!token || typeof token !== "string") {
     return jsonResponse({ error: "token e obrigatorio" }, 400);
   }
-  if (acao !== "salvar" && acao !== "confirmar") {
-    return jsonResponse({ error: "acao deve ser 'salvar' ou 'confirmar'" }, 400);
+  if (acao !== "salvar" && acao !== "confirmar" && acao !== "assinar") {
+    return jsonResponse({ error: "acao deve ser 'salvar', 'confirmar' ou 'assinar'" }, 400);
   }
 
   const tokenHash = await sha256Hex(token);
@@ -165,6 +211,13 @@ async function handlePost(req: Request): Promise<Response> {
       return jsonResponse({ ok: false, motivo: mapaErroNegocio(error.message) }, 200);
     }
     return jsonResponse({ ok: true }, 200);
+  }
+
+  if (acao === "assinar") {
+    if (!body.imagem || typeof body.imagem !== "string") {
+      return jsonResponse({ error: "imagem e obrigatoria para acao=assinar" }, 400);
+    }
+    return await handleAssinar(supabaseAdmin, tokenHash, body.imagem);
   }
 
   // acao === "confirmar" -- delega inteiramente a funcao atomica.

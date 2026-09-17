@@ -26,6 +26,7 @@
           <button class="tab" data-tab="oportunidades">Oportunidades</button>
           <button class="tab" data-tab="contratos">Contratos</button>
           <button class="tab" data-tab="projetos">Projetos</button>
+          <button class="tab" data-tab="tarefas">Tarefas</button>
           <button class="tab" data-tab="documentos">Documentos</button>
         </div>
 
@@ -217,6 +218,18 @@
               </tbody>
             </table>
           </div>
+        `;
+      },
+
+      tarefas: async () => {
+        const { data, error } = await supabase.from('tarefas').select('id, titulo, status, prazo, prioridade').eq('vinculo_tipo', 'contato').eq('vinculo_id', contatoId).order('prazo', { ascending: true, nullsFirst: false });
+        if (error) return `<div class="error-state"><p>Não foi possível carregar as tarefas.</p></div>`;
+        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhuma tarefa vinculada a este cliente. Crie uma em <a href="/tarefas.html" style="text-decoration:underline;">Tarefas</a> e vincule a este contato.</p></div>`;
+        return `
+          <div class="table-wrap"><table class="data-table">
+            <thead><tr><th>Título</th><th>Status</th><th>Prioridade</th><th>Prazo</th></tr></thead>
+            <tbody>${data.map((t) => `<tr><td class="cell-primary">${escapeHtml(t.titulo)}</td><td>${escapeHtml(t.status || '—')}</td><td>${escapeHtml(t.prioridade || '—')}</td><td class="cell-muted">${t.prazo ? formatarData(t.prazo) : '—'}</td></tr>`).join('')}</tbody>
+          </table></div>
         `;
       },
 

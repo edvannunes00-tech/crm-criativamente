@@ -96,7 +96,8 @@
       contato = data.contatos || {};
       document.getElementById('headerContainer').querySelector('.header-title').textContent = data.titulo;
 
-      const podeCancelar = (podeEditar || podeAdministrar) && data.status !== 'cancelado';
+      const podeCancelar = (podeEditar || podeAdministrar) && !['cancelado'].includes(data.status) && data.status !== 'rascunho';
+      const podeExcluirRascunho = podeExcluir && data.status === 'rascunho';
       const podeRegistrarEnvio = editavel() && ['rascunho', 'enviado'].includes(data.status);
 
       document.getElementById('cabecalho').innerHTML = `
@@ -104,12 +105,17 @@
           <div class="flex items-center justify-between mb-4">
             <div>
               <div style="font-size:20px; font-weight:800;">${escapeHtml(data.titulo)}</div>
-              <div class="text-muted mt-1" style="font-size:13px;">Cliente: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome || '—')}</a></div>
+              <div class="text-muted mt-1" style="font-size:13px;">
+                Cliente: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome || '—')}</a>
+                ${data.oportunidade_id ? ` &nbsp;·&nbsp; <a href="/ficha-oportunidade.html?id=${data.oportunidade_id}" style="color:var(--white); text-decoration:underline;">Ver oportunidade</a>` : ''}
+                ${data.projeto_id ? ` &nbsp;·&nbsp; <a href="/ficha-projeto.html?id=${data.projeto_id}" style="color:var(--white); text-decoration:underline;">Ver projeto</a>` : ''}
+              </div>
             </div>
             <div class="flex gap-2 items-center">
               <span class="badge ${STATUS_BADGE[data.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[data.status] || data.status}</span>
               ${podeRegistrarEnvio ? `<button class="btn btn-secondary btn-sm" id="btnRegistrarEnvio">Registrar envio</button>` : ''}
               ${podeCancelar ? `<button class="btn btn-secondary btn-sm" id="btnCancelar" style="color:var(--status-erro);">Cancelar contrato</button>` : ''}
+              ${podeExcluirRascunho ? `<button class="btn btn-secondary btn-sm" id="btnExcluirContrato" style="color:var(--status-erro);">Excluir rascunho</button>` : ''}
             </div>
           </div>
           <div class="indicator-grid">
@@ -121,7 +127,24 @@
       `;
 
       if (podeCancelar) document.getElementById('btnCancelar').addEventListener('click', cancelarContrato);
+      if (podeExcluirRascunho) document.getElementById('btnExcluirContrato').addEventListener('click', excluirContratoRascunho);
       if (podeRegistrarEnvio) document.getElementById('btnRegistrarEnvio').addEventListener('click', registrarEnvio);
+    }
+
+    // Excluir so e permitido em rascunho -- nesse estagio, tudo que
+    // pertence ao contrato (itens/bonus/links/dados_cliente/versoes) ja
+    // cascade automaticamente pela FK. documentos e polimorfico (sem FK),
+    // entao limpamos explicitamente so os que sao exclusivamente deste
+    // contrato antes de apagar o registro principal.
+    async function excluirContratoRascunho() {
+      if (!confirm(`Excluir definitivamente o rascunho "${contrato.titulo}"? Essa ação não pode ser desfeita.`)) return;
+      await supabase.from('documentos').delete().eq('entidade_tipo', 'contrato').eq('entidade_id', contratoId);
+      const { error } = await supabase.from('contratos').delete().eq('id', contratoId);
+      if (error) {
+        alert('Não foi possível excluir: ' + error.message);
+        return;
+      }
+      window.location.href = '/contratos.html';
     }
 
     async function cancelarContrato() {
@@ -429,15 +452,18 @@
         .order('versao', { ascending: false });
 
       const podeGerar = editavel();
+      const lista = versoes || [];
+      const atual = lista[0]; // ja vem ordenado desc por versao
 
-      const versoesHtml = (versoes || []).length === 0
+      const versoesHtml = lista.length === 0
         ? `<div class="empty-state"><p>Nenhum documento gerado ainda.</p></div>`
-        : `<div class="table-wrap"><table class="data-table"><thead><tr><th>Versão</th><th>Arquivo</th><th>Categoria</th><th>Data</th><th></th></tr></thead><tbody>
-            ${versoes.map((v) => `
+        : `<div class="table-wrap"><table class="data-table"><thead><tr><th>Versão</th><th>Arquivo</th><th>Categoria</th><th>Motivo</th><th>Data</th><th></th></tr></thead><tbody>
+            ${lista.map((v) => `
               <tr>
                 <td>v${v.versao}</td>
                 <td class="cell-primary">${escapeHtml((v.documentos && v.documentos.nome_arquivo) || '—')}</td>
                 <td>${escapeHtml((v.documentos && v.documentos.categoria_documento) || '—')}</td>
+                <td class="cell-muted" style="font-size:12px;">${escapeHtml(v.motivo_substituicao || '—')}</td>
                 <td class="cell-muted">${formatarData(v.created_at)}</td>
                 <td><button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button></td>
               </tr>
@@ -447,34 +473,73 @@
       return `
         <div class="card mb-4">
           ${podeGerar ? `<button class="btn btn-primary" id="btnGerarPdf">Gerar documento do contrato (PDF)</button>` : `<p class="text-muted">Contrato ${contrato.status === 'validado' ? 'validado' : 'finalizado'} — documento não pode mais ser gerado automaticamente por aqui.</p>`}
-          <p class="text-muted mt-2" style="font-size:12px;">O PDF é gerado com as cláusulas do contrato-base e o quadro comercial atual, e salvo como uma nova versão no histórico abaixo.</p>
+          <p class="text-muted mt-2" style="font-size:12px;">O PDF é gerado com as cláusulas do contrato-base, o quadro comercial atual e — depois que o cliente confirmar — os dados e assinatura dele, e salvo como uma nova versão no histórico.</p>
+        </div>
+        <div class="card mb-4">
+          <div class="mono-label mb-2">Versão atual</div>
+          ${atual
+            ? `<div class="flex items-center justify-between"><span style="font-size:16px; font-weight:800;">V${atual.versao} — ${escapeHtml((atual.documentos && atual.documentos.categoria_documento) || '—')}</span><button class="btn-ghost" data-baixar="${atual.documentos ? atual.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button></div><p class="text-muted mt-1" style="font-size:12px;">${formatarData(atual.created_at, true)}</p>`
+            : `<p class="text-muted">Nenhum documento gerado ainda.</p>`}
         </div>
         <div class="card">
-          <div class="mono-label mb-4">Versões / documentos</div>
-          ${versoesHtml}
+          <div class="flex items-center justify-between mb-4"><span class="mono-label">Histórico de versões</span>${lista.length > 1 ? `<button class="btn-ghost" id="btnToggleHistorico" style="font-size:12px; text-decoration:underline;">Ver histórico (${lista.length})</button>` : ''}</div>
+          <div id="historicoVersoes" class="${lista.length > 1 ? 'hidden' : ''}">${versoesHtml}</div>
         </div>
       `;
     }
 
     function ligarEventosDocumento() {
+      const btnToggleHistorico = document.getElementById('btnToggleHistorico');
+      if (btnToggleHistorico) {
+        btnToggleHistorico.addEventListener('click', () => {
+          const box = document.getElementById('historicoVersoes');
+          box.classList.toggle('hidden');
+          btnToggleHistorico.textContent = box.classList.contains('hidden') ? `Ver histórico` : 'Ocultar histórico';
+        });
+      }
       const btn = document.getElementById('btnGerarPdf');
       if (btn) {
         btn.addEventListener('click', async () => {
           btn.disabled = true; btn.textContent = 'Gerando...';
           try {
-            const [{ data: itens }, { data: bonusLista }] = await Promise.all([
+            const [{ data: itens }, { data: bonusLista }, { data: snapshotCliente }] = await Promise.all([
               supabase.from('contrato_itens').select('*').eq('contrato_id', contratoId).order('created_at'),
               supabase.from('contrato_bonus').select('*').eq('contrato_id', contratoId).order('created_at'),
+              // Snapshot OFICIAL confirmado pelo cliente -- nunca o cadastro
+              // vivo de crm.contatos pra reconstruir um contrato ja em
+              // andamento/confirmado. So cai no cadastro vivo se o cliente
+              // ainda nem preencheu nada (documento inicial, pre-confirmacao).
+              supabase.from('contrato_dados_cliente').select('*').eq('contrato_id', contratoId).not('confirmado_em', 'is', null).order('confirmado_em', { ascending: false }).limit(1).maybeSingle(),
             ]);
+
+            const clienteSnapshot = snapshotCliente || {
+              nome_completo: contato.nome, cpf_cnpj: contato.cpf_cnpj, telefone: contato.whatsapp, email: contato.email,
+            };
+
+            let assinatura = null;
+            if (snapshotCliente?.assinatura_storage_path) {
+              const { data: arquivoAssinatura } = await supabase.storage.from('documentos-internos').download(snapshotCliente.assinatura_storage_path);
+              if (arquivoAssinatura) {
+                const dataUrl = await new Promise((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result);
+                  reader.readAsDataURL(arquivoAssinatura);
+                });
+                assinatura = { dataUrl, confirmadoEm: snapshotCliente.assinatura_confirmada_em };
+              }
+            }
+
+            const { data: ultimaVersaoAtual } = await supabase.from('contratos_versoes').select('versao').eq('contrato_id', contratoId).order('versao', { ascending: false }).limit(1).maybeSingle();
+            const proximaVersao = (ultimaVersaoAtual?.versao || 0) + 1;
+
             const blob = gerarPdfContrato({
               contrato, itens: itens || [], bonus: bonusLista || [],
-              empresaNome: 'Criativamente', clienteNomeCompleto: contato.nome, clienteCpfCnpj: contato.cpf_cnpj,
-              versao: 1,
+              empresaNome: 'Criativamente', clienteSnapshot, versao: proximaVersao, assinatura,
             });
             await salvarDocumentoContrato({
-              empresaId, contratoId, blob, categoria: 'original',
-              nomeArquivo: `contrato-${contratoId.slice(0, 8)}.pdf`, usuarioId,
-              motivoSubstituicao: 'Documento gerado a partir das condições comerciais atuais',
+              empresaId, contratoId, blob, categoria: assinatura ? 'assinado' : 'original',
+              nomeArquivo: `contrato-${contratoId.slice(0, 8)}-v${proximaVersao}.pdf`, usuarioId,
+              motivoSubstituicao: snapshotCliente ? 'Documento atualizado com os dados confirmados pelo cliente' : 'Documento gerado a partir das condições comerciais atuais',
             });
             await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'versao_criada', titulo: 'Documento do contrato gerado', usuario_id: usuarioId });
             alert('Documento gerado e salvo com sucesso.');
@@ -610,7 +675,22 @@
       const podeRegistrar = podeEditar && ['aguardando_assinatura', 'assinado'].includes(contrato.status);
       const podeValidar = podeAdministrar && contrato.status === 'assinado';
 
+      const { data: assinaturaCliente } = await supabase
+        .from('contrato_dados_cliente')
+        .select('assinatura_confirmada_em, nome_completo')
+        .eq('contrato_id', contratoId)
+        .not('assinatura_confirmada_em', 'is', null)
+        .order('assinatura_confirmada_em', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       return `
+        ${assinaturaCliente ? `
+          <div class="card mb-4" style="border-color:var(--status-sucesso);">
+            <div class="flex items-center gap-2"><span style="font-size:18px;">✓</span><span>Cliente assinou em ${formatarData(assinaturaCliente.assinatura_confirmada_em, true)}</span></div>
+            <p class="text-muted mt-2" style="font-size:11px;">Assinatura eletrônica simples (evidência de aceite dentro do fluxo) — não é assinatura digital certificada ICP-Brasil.</p>
+          </div>
+        ` : ''}
         <div class="card mb-4">
           <div class="mono-label mb-2">Dados da assinatura</div>
           <div class="field"><label class="mono-label">Tipo de assinatura</label>

@@ -132,14 +132,15 @@
     async function carregarBotaoContrato(contatoId) {
       const wrap = document.getElementById('btnContratoWrap');
       if (!wrap) return;
-      const { data: contratoExistente } = await supabase.from('contratos').select('id').eq('oportunidade_id', oportunidadeId).maybeSingle();
-      if (contratoExistente) {
-        wrap.innerHTML = `<a href="/ficha-contrato.html?id=${contratoExistente.id}" class="btn btn-secondary btn-sm">Ver contrato</a>`;
-        return;
-      }
-      if (podeFazer(perm, 'contratos', 'criar')) {
-        wrap.innerHTML = `<a href="/contratos.html?contato_id=${contatoId}&oportunidade_id=${oportunidadeId}" class="btn btn-secondary btn-sm">Gerar contrato</a>`;
-      }
+      const { data: contratoExistente } = await supabase.from('contratos').select('id, projeto_id').eq('oportunidade_id', oportunidadeId).maybeSingle();
+      const { data: projetoExistente } = await supabase.from('projetos').select('id').eq('oportunidade_id', oportunidadeId).maybeSingle();
+
+      const links = [];
+      if (contratoExistente) links.push(`<a href="/ficha-contrato.html?id=${contratoExistente.id}" class="btn btn-secondary btn-sm">Ver contrato</a>`);
+      else if (podeFazer(perm, 'contratos', 'criar')) links.push(`<a href="/contratos.html?contato_id=${contatoId}&oportunidade_id=${oportunidadeId}" class="btn btn-secondary btn-sm">Gerar contrato</a>`);
+      if (projetoExistente) links.push(`<a href="/ficha-projeto.html?id=${projetoExistente.id}" class="btn btn-secondary btn-sm">Ver projeto</a>`);
+
+      wrap.innerHTML = links.join(' ');
     }
 
     async function carregarCheckup() {

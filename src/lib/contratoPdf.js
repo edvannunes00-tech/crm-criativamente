@@ -17,7 +17,20 @@ function quebrarLinhas(doc, texto, larguraMax) {
   return doc.splitTextToSize(texto, larguraMax);
 }
 
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteNomeCompleto, clienteCpfCnpj, versao }) {
+// clienteSnapshot: { nome_completo, cpf_cnpj, telefone, email, endereco_* } --
+// SEMPRE que existir um snapshot confirmado em crm.contrato_dados_cliente,
+// é ele que deve ser passado aqui, nunca o cadastro vivo de crm.contatos
+// (que pode mudar depois e não pode reescrever um contrato já formalizado).
+// assinatura: { dataUrl, confirmadoEm } opcional -- quando presente, o PDF
+// já sai com a assinatura capturada em vez do espaço em branco.
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteSnapshot, versao, assinatura }) {
+  const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
+  const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
+  const enderecoPartes = clienteSnapshot
+    ? [clienteSnapshot.endereco_logradouro, clienteSnapshot.endereco_numero, clienteSnapshot.endereco_complemento, clienteSnapshot.endereco_bairro, clienteSnapshot.endereco_cidade, clienteSnapshot.endereco_estado, clienteSnapshot.endereco_cep]
+        .filter(Boolean)
+    : [];
+  const clienteEndereco = enderecoPartes.join(', ') || null;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const margem = 48;
@@ -64,6 +77,10 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteN
   // ---- Quadro comercial ----
   titulo('QUADRO COMERCIAL');
   paragrafo(`Cliente: ${clienteNomeCompleto}    CPF/CNPJ: ${clienteCpfCnpj || '—'}`);
+  if (clienteSnapshot?.telefone || clienteSnapshot?.email) {
+    paragrafo(`Telefone: ${clienteSnapshot.telefone || '—'}    E-mail: ${clienteSnapshot.email || '—'}`);
+  }
+  if (clienteEndereco) paragrafo(`Endereço: ${clienteEndereco}`);
   paragrafo(`Título do contrato: ${contrato.titulo}`);
   novaLinha(4);
 
@@ -126,8 +143,30 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteN
   novaLinha(14);
   doc.text(`${ctx.contratanteEmpresa} (CONTRATADA)`, margem, y);
   novaLinha(28);
-  doc.text('_________________________________________', margem, y);
-  novaLinha(14);
+
+  if (assinatura?.dataUrl) {
+    // Assinatura capturada na pagina publica (mouse/touch) -- evidencia
+    // de aceite dentro do fluxo, nao uma assinatura eletronica qualificada.
+    // O aviso disso fica no relatorio de implementacao, nao aqui no PDF.
+    try {
+      doc.addImage(assinatura.dataUrl, 'PNG', margem, y, 180, 60);
+      novaLinha(64);
+    } catch {
+      doc.text('_________________________________________', margem, y);
+      novaLinha(14);
+    }
+    if (assinatura.confirmadoEm) {
+      doc.setFontSize(8);
+      doc.setTextColor(90);
+      doc.text(`Assinado eletronicamente em ${formatarData(assinatura.confirmadoEm, true)}`, margem, y);
+      doc.setTextColor(0);
+      doc.setFontSize(10);
+      novaLinha(14);
+    }
+  } else {
+    doc.text('_________________________________________', margem, y);
+    novaLinha(14);
+  }
   doc.text(`${clienteNomeCompleto} (CONTRATANTE)`, margem, y);
 
   return doc.output('blob');

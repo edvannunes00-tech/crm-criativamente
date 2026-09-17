@@ -87,6 +87,7 @@
 
     const { perm } = await initPage({ paginaAtual: 'projetos.html', breadcrumb: 'CRM / Projetos / Ficha', title: 'Ficha do Projeto' });
     const podeEditar = podeFazer(perm, 'projetos', 'editar');
+    const podeExcluirProjeto = podeFazer(perm, 'projetos', 'excluir');
 
     const params = new URLSearchParams(window.location.search);
     const projetoId = params.get('id');
@@ -121,15 +122,20 @@
               <div style="font-size:20px; font-weight:800;">${escapeHtml(data.nome)}</div>
               <div class="text-muted mt-1" style="font-size:13px;">
                 ${contato ? `Cliente: <a href="/ficha-cliente.html?id=${contato.id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(contato.nome)}</a>` : 'Projeto interno (sem cliente)'}
+                ${data.oportunidade_id ? ` &nbsp;·&nbsp; <a href="/ficha-oportunidade.html?id=${data.oportunidade_id}" style="color:var(--white); text-decoration:underline;">Ver oportunidade</a>` : ''}
               </div>
             </div>
             <span class="badge dot-info"><span class="dot"></span>${escapeHtml(data.status)}</span>
           </div>
-          ${podeEditar ? `<button class="btn btn-secondary btn-sm mt-4" id="btnEditarProjeto">Editar</button>` : ''}
+          <div class="flex gap-2 mt-4">
+            ${podeEditar ? `<button class="btn btn-secondary btn-sm" id="btnEditarProjeto">Editar</button>` : ''}
+            ${podeExcluirProjeto ? `<button class="btn btn-secondary btn-sm" id="btnExcluirProjeto" style="color:var(--status-erro);">Excluir</button>` : ''}
+          </div>
         </div>
       `;
 
       if (podeEditar) document.getElementById('btnEditarProjeto').addEventListener('click', abrirModalEdicaoProjeto);
+      if (podeExcluirProjeto) document.getElementById('btnExcluirProjeto').addEventListener('click', excluirProjeto);
 
       const [{ data: progresso }, { data: margem }] = await Promise.all([
         supabase.from('vw_projeto_progresso').select('*').eq('projeto_id', projetoId).maybeSingle(),
@@ -158,6 +164,7 @@
       const { data: checklist } = await supabase.from('projeto_checklist_itens').select('*').in('etapa_id', etapaIds).order('ordem');
 
       const proximoStatus = { pendente: 'em_andamento', em_andamento: 'concluida', concluida: 'concluida' };
+      const anteriorStatus = { pendente: 'pendente', em_andamento: 'pendente', concluida: 'em_andamento' };
       const statusLabel = { pendente: 'Pendente', em_andamento: 'Em andamento', concluida: 'Concluída' };
       const areaStatusLabel = { nao_iniciado: 'Não iniciado', em_andamento: 'Em andamento', travado: 'Travado', concluido: 'Concluído' };
 
@@ -179,6 +186,7 @@
                         <span class="etapa-nome">${escapeHtml(etapa.nome)}</span>
                         <div class="flex gap-2 items-center">
                           <span class="cell-muted" style="font-size:11.5px;">${statusLabel[etapa.status]}</span>
+                          ${podeEditar && etapa.status !== 'pendente' ? `<button class="btn-ghost btn-sm btn-voltar" data-id="${etapa.id}" data-nome="${escapeHtml(etapa.nome)}" data-novo="${anteriorStatus[etapa.status]}" style="font-size:12px;">← Voltar</button>` : ''}
                           ${podeEditar && etapa.status !== 'concluida' ? `<button class="btn btn-secondary btn-sm btn-avancar" data-id="${etapa.id}" data-novo="${proximoStatus[etapa.status]}">Avançar</button>` : ''}
                         </div>
                       </div>
@@ -211,6 +219,19 @@
           if (!error) { await abrirAba('areas'); await carregarCabecalho(); }
         });
       });
+      container.querySelectorAll('.btn-voltar').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Voltar a etapa "${btn.dataset.nome}" para o status anterior? Os dados/checklist já preenchidos não são apagados.`)) return;
+          const { error } = await supabase.from('projeto_etapas').update({ status: btn.dataset.novo }).eq('id', btn.dataset.id);
+          if (error) { alert('Não foi possível voltar a etapa: ' + error.message); return; }
+          await supabase.from('atividades').insert({
+            empresa_id: perm.empresa_id, projeto_id: projetoId, tipo: 'etapa_retrocedida',
+            titulo: `Etapa "${btn.dataset.nome}" voltou para ${btn.dataset.novo === 'pendente' ? 'Pendente' : 'Em andamento'}`,
+          });
+          await abrirAba('areas'); await carregarCabecalho();
+        });
+      });
       container.querySelectorAll('.checklist-check').forEach((chk) => {
         chk.addEventListener('click', async () => {
           const feito = chk.dataset.feito === 'true';
@@ -240,8 +261,17 @@
       timeline: async () => {
         const { data, error } = await supabase.from('atividades').select('*').eq('projeto_id', projetoId).order('created_at', { ascending: false }).limit(50);
         if (error) return `<div class="error-state"><p>Não foi possível carregar a timeline.</p></div>`;
-        if (!data || data.length === 0) return `<div class="empty-state"><p>Nenhuma atividade registrada ainda.</p></div>`;
+        const formNota = `
+          <div class="card mb-4">
+            <form id="formNovaObservacao" class="flex gap-2">
+              <input type="text" id="obsTexto" placeholder="Registrar observação (ex: cliente pediu alteração na introdução)" style="flex:1;" />
+              <button type="submit" class="btn btn-secondary btn-sm">Registrar</button>
+            </form>
+          </div>
+        `;
+        if (!data || data.length === 0) return `${formNota}<div class="empty-state"><p>Nenhuma atividade registrada ainda.</p></div>`;
         return `
+          ${formNota}
           <div class="card"><div class="timeline">
             ${data.map((a) => `
               <div class="timeline-item">
@@ -273,6 +303,16 @@
       content.innerHTML = '<div class="skeleton skeleton-row"></div>';
       content.innerHTML = await abas[nome]();
       if (nome === 'areas') ativarInteracoesArvore(content);
+      const formObs = document.getElementById('formNovaObservacao');
+      if (formObs) {
+        formObs.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const texto = document.getElementById('obsTexto').value.trim();
+          if (!texto) return;
+          await supabase.from('atividades').insert({ empresa_id: perm.empresa_id, projeto_id: projetoId, tipo: 'observacao', titulo: 'Observação registrada', descricao: texto });
+          await abrirAba('timeline');
+        });
+      }
       if (nome === 'contratos') {
         content.querySelectorAll('tbody tr[data-id]').forEach((tr) => {
           tr.addEventListener('click', () => { window.location.href = `/ficha-contrato.html?id=${tr.dataset.id}`; });
@@ -341,6 +381,29 @@
       overlayEditarProjeto.classList.add('hidden');
       await carregarCabecalho();
     });
+
+    // ---------------- EXCLUIR PROJETO ----------------
+    // contratos/despesas vinculados ja sao protegidos pela propria FK
+    // (sem cascade, o delete falha sozinho se existir algum). tarefas e
+    // documentos sao vinculo polimorfico (sem FK), entao checamos aqui
+    // antes -- mesmo padrao ja usado pra oportunidade/cliente.
+    async function excluirProjeto() {
+      const [{ data: tarefasVinculadas }, { data: documentosVinculados }] = await Promise.all([
+        supabase.from('tarefas').select('id').eq('vinculo_tipo', 'projeto').eq('vinculo_id', projetoId).limit(1),
+        supabase.from('documentos').select('id').eq('entidade_tipo', 'projeto').eq('entidade_id', projetoId).limit(1),
+      ]);
+      if ((tarefasVinculadas && tarefasVinculadas.length > 0) || (documentosVinculados && documentosVinculados.length > 0)) {
+        alert('Este projeto tem tarefas e/ou documentos vinculados — remova-os primeiro (ou finalize o projeto em vez de excluir) para preservar esse histórico.');
+        return;
+      }
+      if (!confirm(`Excluir o projeto "${projeto.nome}" definitivamente? Essa ação não pode ser desfeita.`)) return;
+      const { error } = await supabase.from('projetos').delete().eq('id', projetoId);
+      if (error) {
+        alert('Não foi possível excluir agora — provavelmente há um contrato ou despesa vinculado a este projeto, que precisa ser removido/desvinculado primeiro.');
+        return;
+      }
+      window.location.href = '/projetos.html';
+    }
 
     await carregarCabecalho();
     if (projeto) await abrirAba('areas');
