@@ -20,11 +20,6 @@ const NAV_ITEMS = [
   { label: 'Financeiro', href: 'financeiro.html', modulos: ['financeiro', 'caixa'] },
   { label: 'Gestão', href: 'gestao.html', modulos: ['gestao'] },
   { label: 'Configurações', href: 'configuracoes.html', modulos: ['configuracoes', 'usuarios', 'permissoes'] },
-  // PromoWhats: módulo próprio (mineração Shopee + publicação WhatsApp),
-  // dados isolados no schema afiliados (RLS + allowlist própria, não a
-  // matriz crm.papel_permissoes) — por isso sem `modulos` aqui: não cria
-  // dependência de nenhuma tabela do schema crm.
-  { label: 'PromoWhats', href: 'afiliados/dashboard.html', modulos: [] },
 ];
 
 // os 5 itens promovidos ao menu mobile, conforme Fase 8A resposta #3
@@ -50,7 +45,7 @@ export function renderSidebar(container, { perm, usuarioNome, papelNome, paginaA
 
   container.innerHTML = `
     <aside class="sidebar">
-      <div class="sidebar-brand"><span>CRIATIVAMENTE<span class="dot">.</span></span></div>
+      <div class="sidebar-brand"><a href="/hub.html" title="Trocar de empresa" style="color:inherit; text-decoration:none; display:flex; align-items:center; gap:10px;"><img src="/logo.png" alt="" style="height:28px; width:auto;" /><span>CRIATIVAMENTE<span class="dot">.</span></span></a></div>
       <div class="sidebar-group-label mono-label">CRM</div>
       <nav class="sidebar-nav">${linksHtml}</nav>
       <div class="sidebar-footer">
@@ -66,7 +61,7 @@ export function renderSidebar(container, { perm, usuarioNome, papelNome, paginaA
           <span class="mono-label">CRM</span>
           <button type="button" class="btn-ghost" id="mobileMenuClose">Fechar</button>
         </div>
-        <nav class="mobile-menu-links">${linksHtml.replace(/class="sidebar-link /g, 'class="mobile-menu-link ')}</nav>
+        <nav class="mobile-menu-links"><a class="mobile-menu-link" href="/hub.html">← Trocar de empresa</a>${linksHtml.replace(/class="sidebar-link /g, 'class="mobile-menu-link ')}</nav>
         <div class="mobile-menu-footer">
           <div class="user-name">${usuarioNome || 'Usuário'}</div>
           <div class="role-badge badge dot-neutro">${papelNome || '—'}</div>

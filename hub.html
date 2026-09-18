@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Criativamente — Início</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    body { background: var(--black); }
+    .hub-shell { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 20px; }
+    .hub-logo { width: 120px; max-width: 40vw; height: auto; margin-bottom: 16px; }
+    .hub-brand { font-family: var(--font-mono); font-weight: 800; font-size: 22px; letter-spacing: .02em; }
+    .hub-brand .dot { color: var(--accent); }
+    .hub-sub { color: var(--gray-2); font-size: 13.5px; margin: 6px 0 32px; text-align: center; }
+    .hub-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; width: 100%; max-width: 860px; }
+    @media (max-width: 720px) { .hub-grid { grid-template-columns: 1fr; } }
+    .hub-card {
+      display: flex; flex-direction: column; gap: 6px; padding: 22px 20px;
+      border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--near-black);
+      color: var(--white); text-decoration: none; transition: border-color .15s, transform .15s;
+    }
+    .hub-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .hub-card.principal { border-color: var(--accent); }
+    .hub-card-title { font-size: 18px; font-weight: 800; }
+    .hub-card-desc { font-size: 13px; color: var(--gray-2); line-height: 1.5; }
+    .hub-card-tag { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); }
+    .hub-sair { margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <div class="hub-shell">
+    <img class="hub-logo" src="/logo.png" alt="Criativamente" />
+    <div class="hub-brand">CRIATIVAMENTE<span class="dot">.</span></div>
+    <p class="hub-sub">Escolha por onde quer entrar.</p>
+
+    <div class="hub-grid">
+      <a class="hub-card principal" href="/dashboard.html">
+        <span class="hub-card-tag">Principal</span>
+        <span class="hub-card-title">Criativamente</span>
+        <span class="hub-card-desc">CRM completo: clientes, pipeline, contratos, projetos, financeiro e gestão.</span>
+      </a>
+      <a class="hub-card" href="/afiliados/dashboard.html">
+        <span class="hub-card-tag">Empresa do grupo</span>
+        <span class="hub-card-title">PromoWhats</span>
+        <span class="hub-card-desc">Mineração de ofertas e publicação automática no WhatsApp.</span>
+      </a>
+      <a class="hub-card" href="https://criativabio.com.br/admin" target="_blank" rel="noopener">
+        <span class="hub-card-tag">Empresa do grupo</span>
+        <span class="hub-card-title">CriativaBio</span>
+        <span class="hub-card-desc">Painel administrativo do CriativaBio (abre em nova aba).</span>
+      </a>
+    </div>
+
+    <button class="btn-ghost hub-sair" id="sairBtn" style="font-family:var(--font-mono); font-size:11px; text-decoration:underline;">Sair</button>
+  </div>
+
+  <script type="module">
+    import { requireSession, logout } from '/src/lib/session.js';
+    const session = await requireSession();
+    if (session) document.getElementById('sairBtn').addEventListener('click', logout);
+  </script>
+</body>
+</html>
