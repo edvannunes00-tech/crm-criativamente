@@ -1,7 +1,7 @@
 /* ============================================================
    DESIGN TOKENS — Promowhatsapp
-   Identidade visual aprovada no protótipo (Artifact "Radar de
-   ofertas"): off-white, verde/teal, cards arredondados, clean.
+   Identidade PromoWhats (logo: balão de conversa + %, ponto lima da
+   Criativamente): areia clara, verde-balão, toques de lima e coral.
    Produto separado do CriativaCRM — identidade própria, não herda
    o tema escuro/verde-neon do CRM.
    ============================================================ */
@@ -16,9 +16,15 @@
   --ink-2: #68644F;
   --ink-muted: #9C9789;
 
-  --accent: #0F6E56;
-  --accent-ink: #0B4F3E;
-  --accent-soft: #DEEEE7;
+  --accent: #12856B;
+  --accent-ink: #0B5A48;
+  --accent-soft: #DDF0E8;
+
+  /* Identidade PromoWhats: lima = assinatura Criativamente; coral = oferta/promo */
+  --spark: #D6F26B;
+  --spark-soft: #F0F9CE;
+  --coral: #FF8A65;
+  --coral-soft: #FFE8DF;
 
   --ml: #3D6BC4;
   --ml-soft: #E4EBFA;

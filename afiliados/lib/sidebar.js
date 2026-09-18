@@ -28,9 +28,9 @@ export function renderSidebar(container, { paginaAtual, usuarioEmail }) {
     <aside class="sidebar">
       <a href="/dashboard.html" class="sidebar-link" style="margin-bottom:4px; color:var(--ink-muted);">${ICON_BACK}Voltar ao CRM</a>
       <div class="brand">
-        <div class="brand-mark mono">P</div>
+        <img class="brand-mark" src="/afiliados/assets/logo-mark.svg" alt="" />
         <div>
-          <div class="brand-name">PromoWhats</div>
+          <div class="brand-name">Promo<b>Whats</b></div>
           <div class="brand-sub">Shopee · 5 grupos</div>
         </div>
       </div>
