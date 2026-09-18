@@ -106,6 +106,7 @@ async function handleGet(req: Request): Promise<Response> {
 interface DadosCliente {
   nome_completo?: string | null;
   cpf_cnpj?: string | null;
+  empresa_marca?: string | null;
   telefone?: string | null;
   email?: string | null;
   endereco_cep?: string | null;
@@ -205,6 +206,7 @@ async function handlePost(req: Request): Promise<Response> {
       p_endereco_bairro: dados.endereco_bairro ?? null,
       p_endereco_cidade: dados.endereco_cidade ?? null,
       p_endereco_estado: dados.endereco_estado ?? null,
+      p_empresa_marca: dados.empresa_marca ?? null,
     });
 
     if (error) {

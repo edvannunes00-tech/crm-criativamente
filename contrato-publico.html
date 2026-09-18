@@ -102,6 +102,7 @@
           <form id="formDados">
             <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
             <div class="field"><label class="mono-label">CPF/CNPJ *</label><input type="text" id="dCpfCnpj" required /></div>
+            <div class="field"><label class="mono-label">Empresa / Razão social (se estiver assinando por uma empresa)</label><input type="text" id="dEmpresaMarca" /></div>
             <div class="field"><label class="mono-label">Telefone *</label><input type="text" id="dTelefone" required /></div>
             <div class="field"><label class="mono-label">E-mail *</label><input type="email" id="dEmail" required /></div>
             <div class="field"><label class="mono-label">CEP</label><input type="text" id="dCep" /></div>
@@ -126,6 +127,7 @@
         const dados = {
           nome_completo: document.getElementById('dNome').value.trim(),
           cpf_cnpj: document.getElementById('dCpfCnpj').value.trim(),
+          empresa_marca: document.getElementById('dEmpresaMarca').value.trim() || null,
           telefone: document.getElementById('dTelefone').value.trim(),
           email: document.getElementById('dEmail').value.trim(),
           endereco_cep: document.getElementById('dCep').value.trim() || null,
@@ -157,6 +159,7 @@
         <div class="card">
           <p style="font-size:14px; margin-bottom:8px;">Revise rapidamente:</p>
           <div class="resumo-linha"><span>Nome</span><span>${escapeHtml(dados.nome_completo)}</span></div>
+          ${dados.empresa_marca ? `<div class="resumo-linha"><span>Empresa</span><span>${escapeHtml(dados.empresa_marca)}</span></div>` : ''}
           <div class="resumo-linha"><span>CPF/CNPJ</span><span>${escapeHtml(dados.cpf_cnpj)}</span></div>
           <div class="resumo-linha"><span>E-mail</span><span>${escapeHtml(dados.email)}</span></div>
           <div class="resumo-linha"><span>Valor negociado</span><span style="font-weight:800;">${formatarMoeda(dadosContrato.valor_negociado_total)}</span></div>
@@ -190,7 +193,7 @@
         <div class="passo-label">Assinatura</div>
         <div class="card">
           <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
-          <canvas id="canvasAssinatura" style="width:100%; height:180px; background:var(--near-black); border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
+          <canvas id="canvasAssinatura" style="width:100%; height:180px; background:#ffffff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
           <div class="flex gap-2 mt-2">
             <button class="btn btn-secondary btn-sm" id="btnLimparAssinatura">Limpar</button>
             <button class="btn btn-primary btn-sm" id="btnConfirmarAssinatura" disabled style="flex:1;">Confirmar assinatura</button>
@@ -210,9 +213,16 @@
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width;
         canvas.height = rect.height;
-        ctx2d.lineWidth = 2;
+        ctx2d.lineWidth = 2.4;
         ctx2d.lineCap = 'round';
-        ctx2d.strokeStyle = '#F5F5F2';
+        ctx2d.lineJoin = 'round';
+        // Tinta escura sobre fundo transparente -- o bitmap do canvas em si
+        // nunca recebe um fillRect de fundo, então o PNG exportado
+        // (toDataURL) sai com fundo transparente e traço escuro, como uma
+        // assinatura a caneta sobre papel branco quando colada no PDF
+        // (que já é branco). O <canvas style background:#fff> acima é só
+        // a cor de visualização em tela, não faz parte do bitmap exportado.
+        ctx2d.strokeStyle = '#12141a';
       }
       ajustarTamanhoCanvas();
 

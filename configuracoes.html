@@ -776,11 +776,12 @@
     // ABA: FINANCEIRO (configurações gerais)
     // ============================================================
     async function abaFinanceiroConfig() {
-      const { data, error } = await supabase.from('configuracoes').select('*').eq('empresa_id', empresaId).in('chave', ['percentual_imposto', 'dias_para_cliente_inativo']);
+      const { data, error } = await supabase.from('configuracoes').select('*').eq('empresa_id', empresaId).in('chave', ['percentual_imposto', 'dias_para_cliente_inativo', 'dados_fiscais_contratada']);
       if (error) { if (await handleQueryError(error)) return ''; return `<div class="error-state"><p>Não foi possível carregar as configurações agora.</p></div>`; }
 
       const valores = {};
       (data || []).forEach((c) => { valores[c.chave] = c.valor; });
+      const fiscal = valores.dados_fiscais_contratada || {};
 
       return `
         <div class="card mb-4">
@@ -792,7 +793,7 @@
           <p class="text-muted" style="font-size:12px;">Usado só pra estimar o EBITDA e o Lucro Gerencial no Financeiro — não substitui o cálculo fiscal real da contabilidade.</p>
           <button class="btn btn-primary mt-4" id="btnSalvarImposto">Salvar</button>
         </div>
-        <div class="card">
+        <div class="card mb-4">
           <div class="mono-label mb-4">Regra de Cliente Inativo</div>
           <div class="field">
             <label class="mono-label">Dias sem compra até marcar como inativo</label>
@@ -800,6 +801,19 @@
           </div>
           <p class="text-muted" style="font-size:12px;">Depois desse período sem nenhuma nova compra, o cliente aparece como "Cliente Inativo" nas listas.</p>
           <button class="btn btn-primary mt-4" id="btnSalvarDiasInativo">Salvar</button>
+        </div>
+        <div class="card">
+          <div class="mono-label mb-4">Dados fiscais da contratada (para contratos)</div>
+          <div class="field">
+            <label class="mono-label">Razão social</label>
+            <input type="text" id="cfgFiscalRazaoSocial" value="${fiscal.razao_social ? escapeHtml(fiscal.razao_social) : ''}" placeholder="Nome que aparece no PDF do contrato como CONTRATADA" />
+          </div>
+          <div class="field">
+            <label class="mono-label">CNPJ/CPF</label>
+            <input type="text" id="cfgFiscalCnpj" value="${fiscal.cnpj_cpf ? escapeHtml(fiscal.cnpj_cpf) : ''}" placeholder="Ex.: 00.000.000/0001-00" style="max-width:220px;" />
+          </div>
+          <p class="text-muted" style="font-size:12px;">Usado na identificação da CONTRATADA no PDF do contrato e na assinatura. Se deixar em branco, o PDF mostra "não informado" — nunca inventa um número.</p>
+          <button class="btn btn-primary mt-4" id="btnSalvarFiscal">Salvar</button>
         </div>
       `;
     }
@@ -815,6 +829,12 @@
         const valor = Number(document.getElementById('cfgDiasInativo').value);
         if (isNaN(valor)) { alert('Digite um número válido.'); return; }
         await salvarConfiguracao('dias_para_cliente_inativo', valor);
+        alert('Salvo!');
+      });
+      container.querySelector('#btnSalvarFiscal').addEventListener('click', async () => {
+        const razaoSocial = document.getElementById('cfgFiscalRazaoSocial').value.trim();
+        const cnpjCpf = document.getElementById('cfgFiscalCnpj').value.trim();
+        await salvarConfiguracao('dados_fiscais_contratada', { razao_social: razaoSocial || null, cnpj_cpf: cnpjCpf || null });
         alert('Salvo!');
       });
     }

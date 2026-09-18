@@ -88,7 +88,7 @@
     }
 
     async function carregarCabecalho() {
-      const { data, error } = await supabase.from('contratos').select('*, contatos(id, nome, cpf_cnpj, whatsapp, email)').eq('id', contratoId).maybeSingle();
+      const { data, error } = await supabase.from('contratos').select('*, contatos(id, nome, cpf_cnpj, whatsapp, email, empresa_marca)').eq('id', contratoId).maybeSingle();
       if (error) { if (await handleQueryError(error)) return; document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Não foi possível carregar este contrato.</p></div>`; return; }
       if (!data) { document.getElementById('cabecalho').innerHTML = `<div class="error-state"><p>Contrato não encontrado — ou você não tem acesso a ele.</p></div>`; return; }
 
@@ -502,7 +502,7 @@
         btn.addEventListener('click', async () => {
           btn.disabled = true; btn.textContent = 'Gerando...';
           try {
-            const [{ data: itens }, { data: bonusLista }, { data: snapshotCliente }] = await Promise.all([
+            const [{ data: itens }, { data: bonusLista }, { data: snapshotCliente }, { data: empresaRow }, { data: dadosFiscaisRow }] = await Promise.all([
               supabase.from('contrato_itens').select('*').eq('contrato_id', contratoId).order('created_at'),
               supabase.from('contrato_bonus').select('*').eq('contrato_id', contratoId).order('created_at'),
               // Snapshot OFICIAL confirmado pelo cliente -- nunca o cadastro
@@ -510,11 +510,17 @@
               // andamento/confirmado. So cai no cadastro vivo se o cliente
               // ainda nem preencheu nada (documento inicial, pre-confirmacao).
               supabase.from('contrato_dados_cliente').select('*').eq('contrato_id', contratoId).not('confirmado_em', 'is', null).order('confirmado_em', { ascending: false }).limit(1).maybeSingle(),
+              supabase.from('empresas').select('nome').eq('id', empresaId).maybeSingle(),
+              // Dados fiscais da contratada (razao social/CNPJ) -- configuraveis
+              // em Configurações, nunca hardcoded no template do PDF.
+              supabase.from('configuracoes').select('valor').eq('empresa_id', empresaId).eq('chave', 'dados_fiscais_contratada').maybeSingle(),
             ]);
 
             const clienteSnapshot = snapshotCliente || {
               nome_completo: contato.nome, cpf_cnpj: contato.cpf_cnpj, telefone: contato.whatsapp, email: contato.email,
+              empresa_marca: contato.empresa_marca || null,
             };
+            const dadosFiscais = dadosFiscaisRow?.valor || {};
 
             let assinatura = null;
             if (snapshotCliente?.assinatura_storage_path) {
@@ -534,7 +540,9 @@
 
             const blob = gerarPdfContrato({
               contrato, itens: itens || [], bonus: bonusLista || [],
-              empresaNome: 'Criativamente', clienteSnapshot, versao: proximaVersao, assinatura,
+              empresaNome: dadosFiscais.razao_social || empresaRow?.nome || 'Criativamente',
+              contratadaDocumento: dadosFiscais.cnpj_cpf || null,
+              clienteSnapshot, versao: proximaVersao, assinatura,
             });
             await salvarDocumentoContrato({
               empresaId, contratoId, blob, categoria: assinatura ? 'assinado' : 'original',

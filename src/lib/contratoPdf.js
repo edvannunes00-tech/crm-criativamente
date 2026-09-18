@@ -23,9 +23,11 @@ function quebrarLinhas(doc, texto, larguraMax) {
 // (que pode mudar depois e não pode reescrever um contrato já formalizado).
 // assinatura: { dataUrl, confirmadoEm } opcional -- quando presente, o PDF
 // já sai com a assinatura capturada em vez do espaço em branco.
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteSnapshot, versao, assinatura }) {
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, clienteSnapshot, versao, assinatura }) {
   const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
   const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
+  const clienteEmpresaMarca = clienteSnapshot?.empresa_marca || null;
+  const clienteIdentificacao = clienteEmpresaMarca ? `${clienteNomeCompleto} / ${clienteEmpresaMarca}` : clienteNomeCompleto;
   const enderecoPartes = clienteSnapshot
     ? [clienteSnapshot.endereco_logradouro, clienteSnapshot.endereco_numero, clienteSnapshot.endereco_complemento, clienteSnapshot.endereco_bairro, clienteSnapshot.endereco_cidade, clienteSnapshot.endereco_estado, clienteSnapshot.endereco_cep]
         .filter(Boolean)
@@ -76,7 +78,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteS
 
   // ---- Quadro comercial ----
   titulo('QUADRO COMERCIAL');
-  paragrafo(`Cliente: ${clienteNomeCompleto}    CPF/CNPJ: ${clienteCpfCnpj || '—'}`);
+  paragrafo(`Cliente: ${clienteIdentificacao}    CPF/CNPJ: ${clienteCpfCnpj || '—'}`);
   if (clienteSnapshot?.telefone || clienteSnapshot?.email) {
     paragrafo(`Telefone: ${clienteSnapshot.telefone || '—'}    E-mail: ${clienteSnapshot.email || '—'}`);
   }
@@ -137,12 +139,33 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteS
   });
 
   novaLinha(24);
+  titulo('ASSINATURAS', 12);
+  novaLinha(4);
+
+  // ---- Bloco CONTRATADA (empresa dona do contrato) ----
+  // Nao ha captura de assinatura da contratada neste fluxo (so o cliente
+  // assina, pela pagina publica) -- fica so a linha em branco pra
+  // assinatura fisica/posterior, mas com identificacao completa.
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
+  doc.text('CONTRATADA', margem, y);
+  novaLinha(16);
   doc.text('_________________________________________', margem, y);
   novaLinha(14);
-  doc.text(`${ctx.contratanteEmpresa} (CONTRATADA)`, margem, y);
-  novaLinha(28);
+  doc.setFont('helvetica', 'bold');
+  doc.text(ctx.contratanteEmpresa, margem, y);
+  novaLinha(13);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`CNPJ/CPF: ${contratadaDocumento || 'não informado'}`, margem, y);
+  doc.setFontSize(10);
+  novaLinha(30);
+
+  // ---- Bloco CONTRATANTE (cliente que preencheu/confirmou/assinou) ----
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('CONTRATANTE', margem, y);
+  novaLinha(16);
 
   if (assinatura?.dataUrl) {
     // Assinatura capturada na pagina publica (mouse/touch) -- evidencia
@@ -167,7 +190,13 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, clienteS
     doc.text('_________________________________________', margem, y);
     novaLinha(14);
   }
-  doc.text(`${clienteNomeCompleto} (CONTRATANTE)`, margem, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(clienteIdentificacao, margem, y);
+  novaLinha(13);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`CPF/CNPJ: ${clienteCpfCnpj}`, margem, y);
+  doc.setFontSize(10);
 
   return doc.output('blob');
 }
