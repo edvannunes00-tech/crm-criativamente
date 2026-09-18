@@ -45,7 +45,7 @@
     import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
     import { gerarPdfContrato, salvarDocumentoContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
     import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
-    import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento } from '/src/lib/condicoesPagamento.js';
+    import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento, sugerirCondicaoPorFaixa } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
 
     const { session, perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos / Ficha', title: 'Ficha do Contrato' });
@@ -240,6 +240,9 @@
               ${CONDICOES_PAGAMENTO.map((o) => `<option value="${o.valor}" ${contrato.condicao_pagamento_tipo === o.valor ? 'selected' : ''}>${o.label}</option>`).join('')}
             </select>
           </div>
+          ${podeMexer && !contrato.condicao_pagamento_tipo && sugerirCondicaoPorFaixa(contrato.valor_negociado_total) ? `
+          <p class="text-muted" style="font-size:12px; margin:-6px 0 12px;">Sugestão para ${formatarMoeda(contrato.valor_negociado_total)}: <strong>${(CONDICOES_PAGAMENTO.find((o) => o.valor === sugerirCondicaoPorFaixa(contrato.valor_negociado_total)) || {}).label}</strong>
+            <button type="button" class="btn-ghost" id="btnAplicarSugestao" style="font-size:12px; text-decoration:underline;">Aplicar</button></p>` : ''}
           <div class="field ${contrato.condicao_pagamento_tipo === 'sinal_saldo' ? '' : 'hidden'}" id="campoPercentualEntrada">
             <label class="mono-label">Percentual de entrada (sinal)</label>
             <select id="cPercentualPreset" ${podeMexer ? '' : 'disabled'}>
@@ -364,6 +367,11 @@
       const percentualPreset = document.getElementById('cPercentualPreset');
       const percentualCustom = document.getElementById('cPercentualCustom');
       const formaSel = document.getElementById('cFormaPagamento');
+      const btnSugestao = document.getElementById('btnAplicarSugestao');
+      if (btnSugestao) btnSugestao.addEventListener('click', () => {
+        condicaoTipoSel.value = sugerirCondicaoPorFaixa(contrato.valor_negociado_total);
+        condicaoTipoSel.dispatchEvent(new Event('change'));
+      });
 
       function percentualEntradaAtual() {
         if (!percentualPreset) return null;

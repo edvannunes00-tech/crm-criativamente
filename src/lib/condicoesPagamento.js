@@ -12,8 +12,23 @@ export const CONDICOES_PAGAMENTO = [
   { valor: 'parcelado_mensal', label: 'Parcelado mensal' },
   { valor: 'cinquenta_gravacao_entrega', label: '50% na gravação + 50% na entrega' },
   { valor: 'cinquenta_contratacao_entrega', label: '50% na contratação + 50% na entrega' },
+  { valor: 'sinal_gravacao', label: '20% sinal + 80% até a 1ª gravação' },
+  { valor: 'sinal_40_40', label: '20% sinal + 40% até a 1ª gravação + 40% em até 7 dias da entrega' },
   { valor: 'personalizado', label: 'Personalizado' },
 ];
+
+// Sugestão padrão por faixa de valor total (o usuário pode trocar).
+export const LIMITE_FAIXA_PAGAMENTO = 3000;
+export function sugerirCondicaoPorFaixa(valorTotal) {
+  const v = Number(valorTotal) || 0;
+  if (v <= 0) return null;
+  return v <= LIMITE_FAIXA_PAGAMENTO ? 'sinal_gravacao' : 'sinal_40_40';
+}
+
+const RESUMO_FIXO = {
+  sinal_gravacao: 'Sinal de 20% (reserva de agenda) + 80% até a primeira sessão de gravação',
+  sinal_40_40: 'Sinal de 20% (reserva de agenda) + 40% até a primeira sessão de gravação + 40% em até 7 dias corridos contados da entrega',
+};
 
 export const PERCENTUAIS_ENTRADA_PRESET = [10, 20, 30, 50];
 
@@ -46,6 +61,8 @@ export function montarResumoCondicaoPagamento({
 
   if (condicaoTipo === 'personalizado') {
     if (textoPersonalizado) partes.push(textoPersonalizado);
+  } else if (RESUMO_FIXO[condicaoTipo]) {
+    partes.push(RESUMO_FIXO[condicaoTipo]);
   } else if (condicaoTipo === 'sinal_saldo' && percentualEntrada) {
     const saldo = 100 - Number(percentualEntrada);
     partes.push(`Sinal de ${percentualEntrada}% + saldo de ${saldo}%`);
