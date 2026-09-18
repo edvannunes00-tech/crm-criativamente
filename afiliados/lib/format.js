@@ -34,6 +34,8 @@ export function statusLabel(status) {
     APROVADO_AGUARDANDO_PUBLICACAO: 'Aguardando publicação',
     PUBLISHED: 'Publicado',
     REJECTED: 'Rejeitado',
+    FAILED: 'Erro',
+    EXPIRED: 'Expirado',
   };
   return map[status] || status || '—';
 }
@@ -44,9 +46,24 @@ export function statusPillClass(status) {
     APROVADO_AGUARDANDO_PUBLICACAO: 'ok',
     FINALISTA: 'warn',
     REJECTED: 'danger',
+    FAILED: 'danger',
+    EXPIRED: 'warn',
     DISCOVERED: 'neu',
   };
   return map[status] || 'neu';
+}
+
+// Melhor timestamp disponível para exibir uma linha de histórico,
+// dependendo do status — cada status tem seu próprio campo de
+// "quando aconteceu"; nunca inventa um horário que a oferta não tem.
+export function melhorTimestamp(o) {
+  return o.published_at ?? o.rejeitado_em ?? o.aprovado_em ?? o.analisado_em ?? o.descoberto_em ?? null;
+}
+
+// Motivo mais relevante para exibir (rejeição manual > descarte
+// automático), quando existir.
+export function motivoRelevante(o) {
+  return o.motivo_rejeicao_manual || o.motivo_descarte || null;
 }
 
 // imagem_url na migração da Fase 1 às vezes é um nome de arquivo

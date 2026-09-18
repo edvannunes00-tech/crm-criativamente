@@ -31,8 +31,12 @@
         <div class="cyclepill"><span class="dot" id="statusDot"></span><span id="resumo">carregando…</span></div>
       </div>
 
-      <div class="card" style="padding:10px 16px; margin-bottom:1rem; font-size:12.5px; color:var(--ink-2);">
-        Aprovar move a oferta para <b>aguardando publicação</b> — o worker local publica de verdade no WhatsApp.
+      <div class="card" style="padding:10px 16px; margin-bottom:1rem; font-size:12.5px; color:var(--ink-2); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <span>Aprovar move a oferta para <b>aguardando publicação</b> — o worker local publica de verdade no WhatsApp.</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn primary" id="aprovarTodosBtn">Aprovar todos</button>
+          <button class="btn danger" id="rejeitarTodosBtn">Rejeitar todos</button>
+        </div>
       </div>
 
       <div id="fila"><div class="empty-state">Carregando fila…</div></div>
@@ -209,6 +213,68 @@
       d.textContent = s ?? '';
       return d.innerHTML;
     }
+
+    function cardsAtuais() {
+      return [...document.querySelectorAll('.review[data-id]')];
+    }
+
+    async function aprovarTodos() {
+      const cards = cardsAtuais();
+      if (cards.length === 0) { toast('err', 'Fila vazia — nada para aprovar.'); return; }
+      if (!confirm(`Aprovar ${cards.length} oferta${cards.length > 1 ? 's' : ''} agora? Cada uma vai direto para aguardando publicação.`)) return;
+      setBulkLoading(true);
+      let ok = 0, falha = 0;
+      for (const card of cards) {
+        const id = card.dataset.id;
+        const statusEsperado = card.dataset.status;
+        const { error } = await db.rpc('aprovar_oferta', { p_oferta_id: id, p_status_esperado: statusEsperado });
+        if (error) { falha++; handleAcaoErro(card, error); } else { ok++; removerDaFila(card); }
+      }
+      setBulkLoading(false);
+      toast(falha === 0 ? 'ok' : 'err', `${ok} aprovada${ok !== 1 ? 's' : ''}${falha ? `, ${falha} com erro` : ''}.`);
+    }
+
+    function abrirModalRejeitarTodos() {
+      const cards = cardsAtuais();
+      if (cards.length === 0) { toast('err', 'Fila vazia — nada para rejeitar.'); return; }
+      const container = document.getElementById('modalContainer');
+      container.innerHTML = `
+        <div class="modal-backdrop" id="modalBackdrop">
+          <div class="modal-card">
+            <div style="font-size:15px; font-weight:500;">Rejeitar todos (${cards.length})</div>
+            <div style="font-size:12.5px; color:var(--ink-2)">O mesmo motivo será gravado em todas as ofertas da fila atual.</div>
+            <textarea id="motivoInput" placeholder="Motivo (opcional)"></textarea>
+            <div class="modal-actions">
+              <button class="btn" id="cancelarModal">Cancelar</button>
+              <button class="btn danger" id="confirmarModal">Confirmar rejeição de todos</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('cancelarModal').addEventListener('click', () => { container.innerHTML = ''; });
+      document.getElementById('modalBackdrop').addEventListener('click', (ev) => { if (ev.target.id === 'modalBackdrop') container.innerHTML = ''; });
+      document.getElementById('confirmarModal').addEventListener('click', async () => {
+        const motivo = document.getElementById('motivoInput').value.trim() || null;
+        container.innerHTML = '';
+        setBulkLoading(true);
+        let ok = 0, falha = 0;
+        for (const card of cards) {
+          const id = card.dataset.id;
+          const statusEsperado = card.dataset.status;
+          const { error } = await db.rpc('rejeitar_oferta', { p_oferta_id: id, p_status_esperado: statusEsperado, p_motivo: motivo });
+          if (error) { falha++; handleAcaoErro(card, error); } else { ok++; removerDaFila(card); }
+        }
+        setBulkLoading(false);
+        toast(falha === 0 ? 'ok' : 'err', `${ok} rejeitada${ok !== 1 ? 's' : ''}${falha ? `, ${falha} com erro` : ''}.`);
+      });
+    }
+
+    function setBulkLoading(isLoading) {
+      document.getElementById('aprovarTodosBtn').disabled = isLoading;
+      document.getElementById('rejeitarTodosBtn').disabled = isLoading;
+    }
+
+    document.getElementById('aprovarTodosBtn').addEventListener('click', aprovarTodos);
+    document.getElementById('rejeitarTodosBtn').addEventListener('click', abrirModalRejeitarTodos);
 
     carregarFila();
   </script>

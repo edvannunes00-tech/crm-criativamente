@@ -24,6 +24,7 @@
       <div class="filters" id="filtrosStatus"></div>
       <div class="filters" id="filtrosGrupo"></div>
       <div class="filters" id="filtrosMarketplace"></div>
+      <div class="filters" id="filtrosPeriodo"></div>
 
       <div class="card" id="lista"><div class="empty-state">Carregando ofertas do Supabase…</div></div>
     </div>
@@ -33,7 +34,7 @@
     import { supabase } from '/src/lib/supabaseClient.js';
     import { requireSession, handleQueryError } from '/src/lib/session.js';
     import { renderSidebar } from '/afiliados/lib/sidebar.js';
-    import { money, statusLabel, statusPillClass, marketplaceLabel, resolvableImageUrl } from '/afiliados/lib/format.js';
+    import { money, statusLabel, statusPillClass, marketplaceLabel, resolvableImageUrl, dateFromEpoch } from '/afiliados/lib/format.js';
     import { ICON_PHOTO } from '/afiliados/lib/icons.js';
 
     const session = await requireSession();
@@ -45,6 +46,7 @@
     let filtroStatus = 'TODOS';
     let filtroGrupo = 'TODOS';
     let filtroMarketplace = 'TODOS';
+    let filtroPeriodo = 'TODOS';
 
     const { data, error } = await db.from('ofertas').select('*').order('created_at', { ascending: false });
 
@@ -75,6 +77,9 @@
       document.getElementById('filtrosMarketplace').innerHTML = marketplaces.map(m =>
         `<div class="chip ${m === filtroMarketplace ? 'on' : ''}" data-kind="mp" data-val="${m}">${m === 'TODOS' ? 'Todos os marketplaces' : marketplaceLabel(m)}</div>`
       ).join('');
+      document.getElementById('filtrosPeriodo').innerHTML = ['TODOS', '1', '7', '30', '90'].map(p =>
+        `<div class="chip ${p === filtroPeriodo ? 'on' : ''}" data-kind="periodo" data-val="${p}">${p === 'TODOS' ? 'Todo o período' : p === '1' ? 'Hoje' : `Últimos ${p} dias`}</div>`
+      ).join('');
 
       document.querySelectorAll('.chip').forEach(chip => {
         chip.addEventListener('click', () => {
@@ -82,6 +87,7 @@
           if (kind === 'status') filtroStatus = val;
           if (kind === 'grupo') filtroGrupo = val;
           if (kind === 'mp') filtroMarketplace = val;
+          if (kind === 'periodo') filtroPeriodo = val;
           renderFiltros();
           renderLista();
         });
@@ -89,11 +95,17 @@
     }
 
     function renderLista() {
-      const filtradas = TODAS.filter(o =>
-        (filtroStatus === 'TODOS' || o.status === filtroStatus) &&
-        (filtroGrupo === 'TODOS' || o.grupo_destino === filtroGrupo) &&
-        (filtroMarketplace === 'TODOS' || o.marketplace === filtroMarketplace)
-      );
+      const agora = Date.now() / 1000;
+      const filtradas = TODAS.filter(o => {
+        if (filtroStatus !== 'TODOS' && o.status !== filtroStatus) return false;
+        if (filtroGrupo !== 'TODOS' && o.grupo_destino !== filtroGrupo) return false;
+        if (filtroMarketplace !== 'TODOS' && o.marketplace !== filtroMarketplace) return false;
+        if (filtroPeriodo !== 'TODOS') {
+          const dias = Number(filtroPeriodo);
+          if (!o.descoberto_em || (agora - o.descoberto_em) > dias * 86400) return false;
+        }
+        return true;
+      });
 
       document.getElementById('resumo').textContent = `${TODAS.length} no estoque · ${filtradas.length} exibidas`;
 
@@ -115,6 +127,7 @@
               <span>${o.nicho || '—'}</span>
               ${o.calculated_discount != null ? `<span>${o.calculated_discount}% off</span>` : ''}
               <span>★ ${o.avaliacao ?? '—'} (${o.num_avaliacoes ?? '—'})</span>
+              <span>${dateFromEpoch(o.descoberto_em)}</span>
             </div>
           </div>
           <div class="price">${o.preco_anterior ? `<span class="price-old">${money(o.preco_anterior)}</span>` : ''}${money(o.preco_atual)}</div>

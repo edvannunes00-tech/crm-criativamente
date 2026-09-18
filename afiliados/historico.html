@@ -16,11 +16,12 @@
       <div class="topbar">
         <div>
           <div class="pagetitle">Histórico</div>
-          <div class="pagesub">Publicações reais, direto de afiliados.ofertas</div>
+          <div class="pagesub">Publicações, erros e rejeições — direto de afiliados.ofertas</div>
         </div>
         <div class="cyclepill"><span class="dot" id="statusDot"></span><span id="resumo">carregando…</span></div>
       </div>
 
+      <div class="filters" id="filtroStatus"></div>
       <div class="filters" id="filtroPeriodo"></div>
       <div class="filters" id="filtroGrupo"></div>
       <div class="filters" id="filtroMarketplace"></div>
@@ -33,7 +34,7 @@
     import { supabase } from '/src/lib/supabaseClient.js';
     import { requireSession, handleQueryError } from '/src/lib/session.js';
     import { renderSidebar } from '/afiliados/lib/sidebar.js';
-    import { money, marketplaceLabel, dateFromEpoch } from '/afiliados/lib/format.js';
+    import { money, marketplaceLabel, dateFromEpoch, statusLabel, statusPillClass, melhorTimestamp, motivoRelevante } from '/afiliados/lib/format.js';
     import { ICON_PHOTO } from '/afiliados/lib/icons.js';
 
     const session = await requireSession();
@@ -41,12 +42,14 @@
     renderSidebar(document.getElementById('sidebarContainer'), { paginaAtual: 'historico.html', usuarioEmail: session.user.email });
 
     const db = supabase.schema('afiliados');
+    const STATUS_HISTORICO = ['PUBLISHED', 'FAILED', 'EXPIRED', 'REJECTED'];
     let TODAS = [];
+    let filtroStatus = 'TODOS';
     let filtroPeriodo = 'TODOS';
     let filtroGrupo = 'TODOS';
     let filtroMarketplace = 'TODOS';
 
-    const { data, error } = await db.from('ofertas').select('*').eq('status', 'PUBLISHED').order('published_at', { ascending: false });
+    const { data, error } = await db.from('ofertas').select('*').in('status', STATUS_HISTORICO);
 
     const dot = document.getElementById('statusDot');
     if (error) {
@@ -57,7 +60,7 @@
       }
     } else {
       dot.className = 'dot';
-      TODAS = data || [];
+      TODAS = (data || []).sort((a, b) => (melhorTimestamp(b) ?? 0) - (melhorTimestamp(a) ?? 0));
       renderFiltros();
       renderLista();
     }
@@ -66,6 +69,9 @@
       const grupos = ['TODOS', ...new Set(TODAS.map(o => o.grupo_destino).filter(Boolean))];
       const marketplaces = ['TODOS', ...new Set(TODAS.map(o => o.marketplace).filter(Boolean))];
 
+      document.getElementById('filtroStatus').innerHTML = ['TODOS', ...STATUS_HISTORICO].map(s =>
+        `<div class="chip ${s === filtroStatus ? 'on' : ''}" data-kind="status" data-val="${s}">${s === 'TODOS' ? 'Tudo' : statusLabel(s)}</div>`
+      ).join('');
       document.getElementById('filtroPeriodo').innerHTML = ['TODOS', '7', '30'].map(p =>
         `<div class="chip ${p === filtroPeriodo ? 'on' : ''}" data-kind="periodo" data-val="${p}">${p === 'TODOS' ? 'Todo o período' : `Últimos ${p} dias`}</div>`
       ).join('');
@@ -79,6 +85,7 @@
       document.querySelectorAll('.chip').forEach(chip => {
         chip.addEventListener('click', () => {
           const { kind, val } = chip.dataset;
+          if (kind === 'status') filtroStatus = val;
           if (kind === 'periodo') filtroPeriodo = val;
           if (kind === 'grupo') filtroGrupo = val;
           if (kind === 'mp') filtroMarketplace = val;
@@ -91,23 +98,28 @@
     function renderLista() {
       const agora = Date.now() / 1000;
       const filtradas = TODAS.filter(o => {
+        if (filtroStatus !== 'TODOS' && o.status !== filtroStatus) return false;
         if (filtroPeriodo !== 'TODOS') {
           const dias = Number(filtroPeriodo);
-          if (!o.published_at || (agora - o.published_at) > dias * 86400) return false;
+          const ts = melhorTimestamp(o);
+          if (!ts || (agora - ts) > dias * 86400) return false;
         }
         if (filtroGrupo !== 'TODOS' && o.grupo_destino !== filtroGrupo) return false;
         if (filtroMarketplace !== 'TODOS' && o.marketplace !== filtroMarketplace) return false;
         return true;
       });
 
-      document.getElementById('resumo').textContent = `${TODAS.length} publicadas no total · ${filtradas.length} exibidas`;
+      const publicadas = TODAS.filter(o => o.status === 'PUBLISHED').length;
+      document.getElementById('resumo').textContent = `${publicadas} publicadas · ${TODAS.length} no total · ${filtradas.length} exibidas`;
 
       if (filtradas.length === 0) {
-        document.getElementById('lista').innerHTML = '<div class="empty-state">Nenhuma publicação com esses filtros — sem dados.</div>';
+        document.getElementById('lista').innerHTML = '<div class="empty-state">Nenhum registro com esses filtros — sem dados.</div>';
         return;
       }
 
-      document.getElementById('lista').innerHTML = filtradas.map(o => `
+      document.getElementById('lista').innerHTML = filtradas.map(o => {
+        const motivo = motivoRelevante(o);
+        return `
         <div class="list-row">
           <div class="thumb">${ICON_PHOTO}</div>
           <div class="rowmain">
@@ -116,13 +128,14 @@
               <span class="badge ${o.marketplace === 'shopee' ? 'shp' : 'ml'}">${marketplaceLabel(o.marketplace)}</span>
               <span>${o.grupo_destino || '—'}</span>
               ${o.calculated_discount != null ? `<span>${o.calculated_discount}% off</span>` : ''}
-              <span>${dateFromEpoch(o.published_at)}</span>
+              <span>${dateFromEpoch(melhorTimestamp(o))}</span>
+              ${motivo ? `<span style="color:var(--danger)">${motivo}</span>` : ''}
             </div>
           </div>
           <div class="price">${money(o.preco_atual)}</div>
-          <div class="pill ok">Publicado</div>
-        </div>
-      `).join('');
+          <div class="pill ${statusPillClass(o.status)}">${statusLabel(o.status)}</div>
+        </div>`;
+      }).join('');
     }
   </script>
 </body>
