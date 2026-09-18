@@ -57,7 +57,10 @@ export function statusPillClass(status) {
 // dependendo do status — cada status tem seu próprio campo de
 // "quando aconteceu"; nunca inventa um horário que a oferta não tem.
 export function melhorTimestamp(o) {
-  return o.published_at ?? o.rejeitado_em ?? o.aprovado_em ?? o.analisado_em ?? o.descoberto_em ?? null;
+  // rejeitado_em/aprovado_em são timestamptz (string ISO); os demais, epoch em segundos.
+  const isoParaEpoch = (v) => (v ? new Date(v).getTime() / 1000 : null);
+  if (o.status === 'REJECTED') return isoParaEpoch(o.rejeitado_em) ?? o.analisado_em ?? o.descoberto_em ?? null;
+  return o.published_at ?? isoParaEpoch(o.aprovado_em) ?? o.analisado_em ?? o.descoberto_em ?? null;
 }
 
 // Motivo mais relevante para exibir (rejeição manual > descarte

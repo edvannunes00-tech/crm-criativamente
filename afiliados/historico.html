@@ -153,9 +153,24 @@
             </div>` : ''}
           </div>
           <div class="price">${money(o.preco_atual)}</div>
+          ${['REJECTED', 'FAILED', 'EXPIRED'].includes(o.status) ? `<button class="btn primary" data-reaprovar="${o.id}" style="padding:4px 10px; font-size:11.5px;">Aprovar</button>` : ''}
           <div class="pill ${statusPillClass(o.status)}">${statusLabel(o.status)}</div>
         </div>`;
       }).join('');
+
+      document.querySelectorAll('[data-reaprovar]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const o = TODAS.find(x => x.id === btn.dataset.reaprovar);
+          if (!o || !confirm('Aprovar esta oferta? Ela vai para aguardando publicação (o worker revalida preço/disponibilidade antes de publicar).')) return;
+          btn.disabled = true;
+          const { error } = await db.rpc('aprovar_oferta', { p_oferta_id: o.id, p_status_esperado: o.status });
+          if (error) { btn.disabled = false; toast('err', (error.message || '').includes('CONFLITO_ESTADO') ? 'A oferta já foi alterada por outro processo — recarregue a página.' : 'Erro: ' + error.message); return; }
+          TODAS = TODAS.filter(x => x.id !== o.id);
+          toast('ok', 'Oferta aprovada — aguardando publicação.');
+          renderFiltros();
+          renderLista();
+        });
+      });
 
       document.querySelectorAll('[data-metrica]').forEach(input => {
         input.addEventListener('change', async () => {
