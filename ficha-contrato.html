@@ -474,6 +474,27 @@
         <div class="card mb-4">
           ${podeGerar ? `<button class="btn btn-primary" id="btnGerarPdf">Gerar documento do contrato (PDF)</button>` : `<p class="text-muted">Contrato ${contrato.status === 'validado' ? 'validado' : 'finalizado'} — documento não pode mais ser gerado automaticamente por aqui.</p>`}
           <p class="text-muted mt-2" style="font-size:12px;">O PDF é gerado com as cláusulas do contrato-base, o quadro comercial atual e — depois que o cliente confirmar — os dados e assinatura dele, e salvo como uma nova versão no histórico.</p>
+          ${podeGerar ? `
+          <details class="mt-4" id="detalhesContratada">
+            <summary class="mono-label" style="cursor:pointer;">Dados da contratada neste documento</summary>
+            <div class="mt-2">
+              <div class="field"><label class="mono-label">Nome / razão social</label><input type="text" id="ctNome" placeholder="Ex.: Edvan Silva / Criativamente" /></div>
+              <div class="field"><label class="mono-label">CPF/CNPJ</label><input type="text" id="ctDoc" /></div>
+              <div class="field"><label class="mono-label">Endereço</label><input type="text" id="ctEndereco" /></div>
+              <div class="field"><label class="mono-label">Responsável legal</label><input type="text" id="ctResp" /></div>
+              <div class="flex gap-2">
+                <div class="field" style="flex:1;"><label class="mono-label">CPF do responsável</label><input type="text" id="ctRespCpf" /></div>
+                <div class="field" style="flex:1;"><label class="mono-label">Cargo</label><input type="text" id="ctRespCargo" /></div>
+              </div>
+              <div class="check-linha"><input type="checkbox" id="ctIncluirAssinatura" /><label for="ctIncluirAssinatura">Incluir assinatura da contratada neste documento</label></div>
+              <div id="ctAssinaturaBox" class="hidden mt-2">
+                <canvas id="ctCanvas" style="width:100%; height:140px; background:#fff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
+                <button class="btn btn-secondary btn-sm mt-2" id="ctLimpar" type="button">Limpar assinatura</button>
+              </div>
+              <div class="check-linha mt-2"><input type="checkbox" id="ctSalvarPadrao" /><label for="ctSalvarPadrao">Salvar estes dados como padrão (Configurações)</label></div>
+              <p class="text-muted" style="font-size:11.5px;">A assinatura desenhada aqui vale só para este documento e só entra no PDF se você marcar a opção acima.</p>
+            </div>
+          </details>` : ''}
         </div>
         <div class="card mb-4">
           <div class="mono-label mb-2">Versão atual</div>
@@ -498,6 +519,43 @@
         });
       }
       const btn = document.getElementById('btnGerarPdf');
+      let ctTemTraco = false;
+      if (btn && document.getElementById('detalhesContratada')) {
+        (async () => {
+          const [{ data: cfg }, { data: emp }] = await Promise.all([
+            supabase.from('configuracoes').select('valor').eq('empresa_id', empresaId).eq('chave', 'dados_fiscais_contratada').maybeSingle(),
+            supabase.from('empresas').select('nome').eq('id', empresaId).maybeSingle(),
+          ]);
+          const f = cfg?.valor || {};
+          document.getElementById('ctNome').value = f.razao_social || emp?.nome || '';
+          document.getElementById('ctDoc').value = f.cnpj_cpf || '';
+          document.getElementById('ctEndereco').value = f.endereco || '';
+          document.getElementById('ctResp').value = f.responsavel_legal || '';
+          document.getElementById('ctRespCpf').value = f.responsavel_cpf || '';
+          document.getElementById('ctRespCargo').value = f.responsavel_cargo || '';
+        })();
+
+        const canvasCt = document.getElementById('ctCanvas');
+        const c2d = canvasCt.getContext('2d');
+        let desenhandoCt = false;
+        const prepararCanvasCt = () => {
+          const r = canvasCt.getBoundingClientRect();
+          if (r.width > 0) { canvasCt.width = r.width; canvasCt.height = r.height; }
+          c2d.lineWidth = 2.4; c2d.lineCap = 'round'; c2d.lineJoin = 'round'; c2d.strokeStyle = '#12141a';
+        };
+        document.getElementById('ctIncluirAssinatura').addEventListener('change', (e) => {
+          document.getElementById('ctAssinaturaBox').classList.toggle('hidden', !e.target.checked);
+          if (e.target.checked) prepararCanvasCt();
+        });
+        const posCt = (ev) => { const r = canvasCt.getBoundingClientRect(); const p = ev.touches ? ev.touches[0] : ev; return { x: p.clientX - r.left, y: p.clientY - r.top }; };
+        const iniCt = (ev) => { ev.preventDefault(); desenhandoCt = true; const p = posCt(ev); c2d.beginPath(); c2d.moveTo(p.x, p.y); };
+        const movCt = (ev) => { if (!desenhandoCt) return; ev.preventDefault(); const p = posCt(ev); c2d.lineTo(p.x, p.y); c2d.stroke(); ctTemTraco = true; };
+        canvasCt.addEventListener('mousedown', iniCt); canvasCt.addEventListener('mousemove', movCt);
+        window.addEventListener('mouseup', () => { desenhandoCt = false; });
+        canvasCt.addEventListener('touchstart', iniCt, { passive: false }); canvasCt.addEventListener('touchmove', movCt, { passive: false });
+        canvasCt.addEventListener('touchend', () => { desenhandoCt = false; });
+        document.getElementById('ctLimpar').addEventListener('click', () => { c2d.clearRect(0, 0, canvasCt.width, canvasCt.height); ctTemTraco = false; });
+      }
       if (btn) {
         btn.addEventListener('click', async () => {
           btn.disabled = true; btn.textContent = 'Gerando...';
@@ -520,7 +578,24 @@
               nome_completo: contato.nome, cpf_cnpj: contato.cpf_cnpj, telefone: contato.whatsapp, email: contato.email,
               empresa_marca: contato.empresa_marca || null,
             };
-            const dadosFiscais = dadosFiscaisRow?.valor || {};
+            let dadosFiscais = dadosFiscaisRow?.valor || {};
+            let contratadaAssinatura = null;
+            if (document.getElementById('ctNome')) {
+              const val = (id) => document.getElementById(id).value.trim() || null;
+              dadosFiscais = {
+                razao_social: val('ctNome'), cnpj_cpf: val('ctDoc'), endereco: val('ctEndereco'),
+                responsavel_legal: val('ctResp'), responsavel_cpf: val('ctRespCpf'), responsavel_cargo: val('ctRespCargo'),
+              };
+              if (document.getElementById('ctIncluirAssinatura').checked) {
+                if (!ctTemTraco) { alert('Desenhe a assinatura da contratada ou desmarque a opção.'); btn.disabled = false; btn.textContent = 'Gerar documento do contrato (PDF)'; return; }
+                contratadaAssinatura = document.getElementById('ctCanvas').toDataURL('image/png');
+              }
+              if (document.getElementById('ctSalvarPadrao').checked) {
+                const { data: existente } = await supabase.from('configuracoes').select('id').eq('empresa_id', empresaId).eq('chave', 'dados_fiscais_contratada').maybeSingle();
+                if (existente) await supabase.from('configuracoes').update({ valor: dadosFiscais }).eq('id', existente.id);
+                else await supabase.from('configuracoes').insert({ empresa_id: empresaId, chave: 'dados_fiscais_contratada', valor: dadosFiscais });
+              }
+            }
 
             let assinatura = null;
             if (snapshotCliente?.assinatura_storage_path) {
@@ -546,6 +621,7 @@
               contratadaResponsavel: dadosFiscais.responsavel_legal || null,
               contratadaResponsavelCpf: dadosFiscais.responsavel_cpf || null,
               contratadaResponsavelCargo: dadosFiscais.responsavel_cargo || null,
+              contratadaAssinaturaDataUrl: contratadaAssinatura,
               clienteSnapshot, versao: proximaVersao, assinatura,
             });
             await salvarDocumentoContrato({

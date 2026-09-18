@@ -23,7 +23,15 @@ function quebrarLinhas(doc, texto, larguraMax) {
 // (que pode mudar depois e não pode reescrever um contrato já formalizado).
 // assinatura: { dataUrl, confirmadoEm } opcional -- quando presente, o PDF
 // já sai com a assinatura capturada em vez do espaço em branco.
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, clienteSnapshot, versao, assinatura }) {
+// 11 dígitos = CPF, 14 = CNPJ; qualquer outra coisa mantém o rótulo genérico.
+function rotuloDocumento(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '');
+  if (digitos.length === 11) return 'CPF';
+  if (digitos.length === 14) return 'CNPJ';
+  return 'CPF/CNPJ';
+}
+
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, contratadaAssinaturaDataUrl, clienteSnapshot, versao, assinatura }) {
   const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
   const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
   const clienteEmpresaMarca = clienteSnapshot?.empresa_marca || null;
@@ -153,14 +161,31 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   doc.setFontSize(10);
   doc.text('CONTRATADA', margem, y);
   novaLinha(16);
-  doc.text('_________________________________________', margem, y);
-  novaLinha(14);
+  let assinouContratada = false;
+  if (contratadaAssinaturaDataUrl) {
+    try {
+      doc.addImage(contratadaAssinaturaDataUrl, 'PNG', margem, y, 180, 60);
+      novaLinha(64);
+      assinouContratada = true;
+    } catch { /* cai na linha em branco */ }
+  }
+  if (!assinouContratada) {
+    doc.text('_________________________________________', margem, y);
+    novaLinha(14);
+  } else {
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    doc.text(`Assinado eletronicamente em ${formatarData(new Date().toISOString(), true)}`, margem, y);
+    doc.setTextColor(0);
+    doc.setFontSize(10);
+    novaLinha(14);
+  }
   doc.setFont('helvetica', 'bold');
   doc.text(ctx.contratanteEmpresa, margem, y);
   novaLinha(13);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`CNPJ/CPF: ${contratadaDocumento || 'não informado'}`, margem, y);
+  doc.text(`${rotuloDocumento(contratadaDocumento)}: ${contratadaDocumento || 'não informado'}`, margem, y);
   doc.setFontSize(10);
   novaLinha(30);
 
@@ -198,7 +223,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   novaLinha(13);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`CPF/CNPJ: ${clienteCpfCnpj}`, margem, y);
+  doc.text(`${rotuloDocumento(clienteCpfCnpj)}: ${clienteCpfCnpj}`, margem, y);
   doc.setFontSize(10);
 
   return doc.output('blob');
