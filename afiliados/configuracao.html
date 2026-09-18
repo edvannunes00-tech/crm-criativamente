@@ -57,12 +57,13 @@
       </div>
       <div class="card" id="agendaLista"><div class="empty-state">Carregando agenda…</div></div>
       <div class="card" style="margin-top:10px; padding:10px 16px;">
-        <div class="agenda-row" style="border-bottom:none; padding:0;">
+        <div class="agenda-row" style="border-bottom:none; padding:0; flex-wrap:wrap;">
           <input type="time" id="novoHorario" value="09:00" />
-          <select id="novoGrupo"></select>
           <input type="number" id="novaQtd" value="1" min="1" max="5" style="width:56px" />
           <button class="btn primary" id="addHorarioBtn">Adicionar horário</button>
         </div>
+        <div class="field-hint" style="margin-top:8px;">Grupos (clique para selecionar um ou mais — um horário é criado para cada grupo selecionado):</div>
+        <div class="filters" id="novoGrupoChips" style="margin:6px 0 0;"></div>
       </div>
 
       <div class="sectiontitle">Grupos — modo de operação</div>
@@ -89,6 +90,7 @@
     let REGRAS = null;
     let AGENDA = [];
     let filtroGrupoAgenda = '';
+    let novoGrupoSelecionados = new Set();
 
     await carregarTudo();
 
@@ -113,7 +115,7 @@
       renderGrupos();
       preencherFiltroGrupoAgenda();
       renderAgenda();
-      preencherSelectGrupos();
+      renderChipsGrupo();
       renderRegras(REGRAS);
     }
 
@@ -277,18 +279,32 @@
       });
     }
 
-    function preencherSelectGrupos() {
-      document.getElementById('novoGrupo').innerHTML = GRUPOS.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+    function renderChipsGrupo() {
+      // Remove seleções de grupos que deixaram de existir, sem perder o resto.
+      novoGrupoSelecionados = new Set([...novoGrupoSelecionados].filter(id => GRUPOS.some(g => g.id === id)));
+      document.getElementById('novoGrupoChips').innerHTML = GRUPOS.map(g => `
+        <div class="chip ${novoGrupoSelecionados.has(g.id) ? 'on' : ''}" data-grupo-chip="${g.id}">${g.nome}</div>
+      `).join('');
+      document.querySelectorAll('[data-grupo-chip]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          const id = chip.dataset.grupoChip;
+          if (novoGrupoSelecionados.has(id)) novoGrupoSelecionados.delete(id);
+          else novoGrupoSelecionados.add(id);
+          chip.classList.toggle('on');
+        });
+      });
     }
 
     document.getElementById('addHorarioBtn').addEventListener('click', async () => {
       const horario = document.getElementById('novoHorario').value;
-      const grupo_id = document.getElementById('novoGrupo').value;
       const quantidade = Number(document.getElementById('novaQtd').value) || 1;
-      if (!horario || !grupo_id) { toast('err', 'Preencha horário e grupo.'); return; }
-      const { error } = await db.from('agenda').insert({ horario, grupo_id, quantidade, ativo: true });
+      const grupoIds = [...novoGrupoSelecionados];
+      if (!horario || grupoIds.length === 0) { toast('err', 'Preencha o horário e selecione ao menos um grupo.'); return; }
+      const linhas = grupoIds.map(grupo_id => ({ horario, grupo_id, quantidade, ativo: true }));
+      const { error } = await db.from('agenda').insert(linhas);
       if (error) { toast('err', 'Erro ao adicionar: ' + error.message); return; }
-      toast('ok', 'Horário adicionado.');
+      toast('ok', grupoIds.length > 1 ? `Horário adicionado para ${grupoIds.length} grupos.` : 'Horário adicionado.');
+      novoGrupoSelecionados.clear();
       carregarTudo();
     });
 
