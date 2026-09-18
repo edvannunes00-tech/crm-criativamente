@@ -478,21 +478,24 @@
           <details class="mt-4" id="detalhesContratada">
             <summary class="mono-label" style="cursor:pointer;">Dados da contratada neste documento</summary>
             <div class="mt-2">
-              <div class="field"><label class="mono-label">Nome / razão social</label><input type="text" id="ctNome" placeholder="Ex.: Edvan Silva / Criativamente" /></div>
-              <div class="field"><label class="mono-label">CPF/CNPJ</label><input type="text" id="ctDoc" /></div>
-              <div class="field"><label class="mono-label">Endereço</label><input type="text" id="ctEndereco" /></div>
-              <div class="field"><label class="mono-label">Responsável legal</label><input type="text" id="ctResp" /></div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-muted" style="font-size:11.5px;">Usa os últimos dados salvos. Clique em Editar para alterar (ex.: novo CNPJ) — o que você preencher fica salvo para os próximos contratos.</span>
+                <button class="btn btn-secondary btn-sm" id="ctEditar" type="button">Editar</button>
+              </div>
+              <div class="field"><label class="mono-label">Nome / razão social</label><input type="text" id="ctNome" disabled placeholder="Ex.: Edvan Silva / Criativamente" /></div>
+              <div class="field"><label class="mono-label">CPF/CNPJ</label><input type="text" id="ctDoc" disabled /></div>
+              <div class="field"><label class="mono-label">Endereço</label><input type="text" id="ctEndereco" disabled /></div>
+              <div class="field"><label class="mono-label">Responsável legal</label><input type="text" id="ctResp" disabled /></div>
               <div class="flex gap-2">
-                <div class="field" style="flex:1;"><label class="mono-label">CPF do responsável</label><input type="text" id="ctRespCpf" /></div>
-                <div class="field" style="flex:1;"><label class="mono-label">Cargo</label><input type="text" id="ctRespCargo" /></div>
+                <div class="field" style="flex:1;"><label class="mono-label">CPF do responsável</label><input type="text" id="ctRespCpf" disabled /></div>
+                <div class="field" style="flex:1;"><label class="mono-label">Cargo</label><input type="text" id="ctRespCargo" disabled /></div>
               </div>
               <div class="check-linha"><input type="checkbox" id="ctIncluirAssinatura" /><label for="ctIncluirAssinatura">Incluir assinatura da contratada neste documento</label></div>
               <div id="ctAssinaturaBox" class="hidden mt-2">
                 <canvas id="ctCanvas" style="width:100%; height:140px; background:#fff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
                 <button class="btn btn-secondary btn-sm mt-2" id="ctLimpar" type="button">Limpar assinatura</button>
               </div>
-              <div class="check-linha mt-2"><input type="checkbox" id="ctSalvarPadrao" /><label for="ctSalvarPadrao">Salvar estes dados como padrão (Configurações)</label></div>
-              <p class="text-muted" style="font-size:11.5px;">A assinatura desenhada aqui vale só para este documento e só entra no PDF se você marcar a opção acima.</p>
+              <p class="text-muted" style="font-size:11.5px;">A assinatura desenhada aqui vale só para este documento e só entra no PDF se você marcar a opção acima. Os dados são salvos automaticamente ao gerar o documento.</p>
             </div>
           </details>` : ''}
         </div>
@@ -534,6 +537,13 @@
           document.getElementById('ctRespCpf').value = f.responsavel_cpf || '';
           document.getElementById('ctRespCargo').value = f.responsavel_cargo || '';
         })();
+
+        document.getElementById('ctEditar').addEventListener('click', (e) => {
+          const ids = ['ctNome', 'ctDoc', 'ctEndereco', 'ctResp', 'ctRespCpf', 'ctRespCargo'];
+          const editando = ids[0] && !document.getElementById('ctNome').disabled;
+          ids.forEach((id) => { document.getElementById(id).disabled = editando; });
+          e.target.textContent = editando ? 'Editar' : 'Concluir edição';
+        });
 
         const canvasCt = document.getElementById('ctCanvas');
         const c2d = canvasCt.getContext('2d');
@@ -590,7 +600,7 @@
                 if (!ctTemTraco) { alert('Desenhe a assinatura da contratada ou desmarque a opção.'); btn.disabled = false; btn.textContent = 'Gerar documento do contrato (PDF)'; return; }
                 contratadaAssinatura = document.getElementById('ctCanvas').toDataURL('image/png');
               }
-              if (document.getElementById('ctSalvarPadrao').checked) {
+              {
                 const { data: existente } = await supabase.from('configuracoes').select('id').eq('empresa_id', empresaId).eq('chave', 'dados_fiscais_contratada').maybeSingle();
                 if (existente) await supabase.from('configuracoes').update({ valor: dadosFiscais }).eq('id', existente.id);
                 else await supabase.from('configuracoes').insert({ empresa_id: empresaId, chave: 'dados_fiscais_contratada', valor: dadosFiscais });
