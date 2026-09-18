@@ -43,7 +43,7 @@
     import { handleQueryError, podeFazer } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
     import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
-    import { gerarPdfContrato, salvarDocumentoContrato } from '/src/lib/contratoPdf.js';
+    import { gerarPdfContrato, salvarDocumentoContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
     import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
     import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
@@ -632,6 +632,7 @@
               contratadaResponsavelCpf: dadosFiscais.responsavel_cpf || null,
               contratadaResponsavelCargo: dadosFiscais.responsavel_cargo || null,
               contratadaAssinaturaDataUrl: contratadaAssinatura,
+              logoDataUrl: await carregarLogoDataUrl(),
               clienteSnapshot, versao: proximaVersao, assinatura,
             });
             await salvarDocumentoContrato({

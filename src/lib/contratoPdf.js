@@ -31,7 +31,25 @@ function rotuloDocumento(valor) {
   return 'CPF/CNPJ';
 }
 
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, contratadaAssinaturaDataUrl, clienteSnapshot, versao, assinatura }) {
+// Carrega o logo do papel timbrado como data URL (null se falhar — o PDF
+// sai normalmente, só sem logo/marca d'água).
+export async function carregarLogoDataUrl() {
+  try {
+    const resp = await fetch('/logo.png');
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, contratadaAssinaturaDataUrl, logoDataUrl, clienteSnapshot, versao, assinatura }) {
   const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
   const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
   const clienteEmpresaMarca = clienteSnapshot?.empresa_marca || null;
@@ -45,13 +63,17 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const margem = 48;
   const largura = doc.internal.pageSize.getWidth() - margem * 2;
-  let y = margem;
+  // Papel timbrado: cabeçalho e rodapé reservados em todas as páginas
+  // (desenhados no final, quando já se sabe o total de páginas).
+  const topoConteudo = 104;
+  const rodapeReservado = 74;
+  let y = topoConteudo;
 
   function novaLinha(altura = 14) {
     y += altura;
-    if (y > doc.internal.pageSize.getHeight() - margem) {
+    if (y > doc.internal.pageSize.getHeight() - rodapeReservado) {
       doc.addPage();
-      y = margem;
+      y = topoConteudo;
     }
   }
 
@@ -70,6 +92,63 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
       doc.text(linha, margem, y);
       novaLinha(tamanho + 4);
     });
+  }
+
+
+  const VERDE = [31, 138, 96];
+  function aplicarPapelTimbrado() {
+    const total = doc.getNumberOfPages();
+    const larguraPagina = doc.internal.pageSize.getWidth();
+    const alturaPagina = doc.internal.pageSize.getHeight();
+    const linhasRodape = [
+      [ctx.contratanteEmpresa, contratadaDocumento ? `${rotuloDocumento(contratadaDocumento)} ${contratadaDocumento}` : null].filter(Boolean).join('  ·  '),
+      contratadaEndereco || null,
+    ].filter(Boolean);
+
+    for (let i = 1; i <= total; i++) {
+      doc.setPage(i);
+
+      // marca d'água discreta (só o cérebro, bem clara) centralizada
+      if (logoDataUrl && doc.GState) {
+        try {
+          doc.saveGraphicsState();
+          doc.setGState(new doc.GState({ opacity: 0.05 }));
+          const lado = 300;
+          doc.addImage(logoDataUrl, 'PNG', (larguraPagina - lado) / 2, (alturaPagina - lado) / 2, lado, lado * 0.96);
+          doc.restoreGraphicsState();
+        } catch { /* sem marca d'água */ }
+      }
+
+      // cabeçalho: logo + nome + filete verde
+      if (logoDataUrl) {
+        try { doc.addImage(logoDataUrl, 'PNG', margem, 32, 34, 33); } catch { /* sem logo */ }
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(20);
+      doc.text('CRIATIVAMENTE', margem + (logoDataUrl ? 44 : 0), 53);
+      const larguraNome = doc.getTextWidth('CRIATIVAMENTE');
+      doc.setTextColor(...VERDE);
+      doc.text('.', margem + (logoDataUrl ? 44 : 0) + larguraNome, 53);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(110);
+      doc.text(`Contrato nº ${contrato.id.slice(0, 8).toUpperCase()}`, larguraPagina - margem, 46, { align: 'right' });
+      doc.text(`Versão ${versao}`, larguraPagina - margem, 58, { align: 'right' });
+      doc.setDrawColor(...VERDE);
+      doc.setLineWidth(1.4);
+      doc.line(margem, 76, larguraPagina - margem, 76);
+
+      // rodapé: filete cinza + dados da contratada + paginação
+      doc.setDrawColor(200);
+      doc.setLineWidth(0.5);
+      doc.line(margem, alturaPagina - 58, larguraPagina - margem, alturaPagina - 58);
+      doc.setFontSize(7.5);
+      doc.setTextColor(120);
+      linhasRodape.forEach((linha, idx) => doc.text(linha, margem, alturaPagina - 45 + idx * 10));
+      doc.text(`Página ${i} de ${total}`, larguraPagina - margem, alturaPagina - 45, { align: 'right' });
+      doc.setTextColor(0);
+    }
   }
 
   // ---- Cabeçalho ----
@@ -226,6 +305,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   doc.text(`${rotuloDocumento(clienteCpfCnpj)}: ${clienteCpfCnpj}`, margem, y);
   doc.setFontSize(10);
 
+  aplicarPapelTimbrado();
   return doc.output('blob');
 }
 
