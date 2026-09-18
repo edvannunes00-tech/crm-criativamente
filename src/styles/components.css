@@ -82,6 +82,31 @@
   }
   .mobile-tabbar a .icon { font-size: 16px; }
   .mobile-tabbar a.active { color: var(--accent); }
+  .mobile-menu-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: none; cursor: pointer; color: var(--gray-2);
+    font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .mobile-menu-btn .icon { font-size: 16px; }
+
+  .mobile-menu-overlay {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.6);
+    display: flex; align-items: flex-end;
+  }
+  .mobile-menu-overlay[hidden] { display: none; }
+  .mobile-menu-sheet {
+    width: 100%; max-height: 85vh; overflow-y: auto;
+    background: var(--near-black); border-top: 1px solid var(--line-strong);
+    border-radius: 12px 12px 0 0; padding: 16px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  .mobile-menu-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .mobile-menu-links { display: flex; flex-direction: column; }
+  .mobile-menu-link {
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+    color: var(--white); text-decoration: none; font-size: 15px; font-weight: 600;
+  }
+  .mobile-menu-link.active { color: var(--accent); }
+  .mobile-menu-footer { margin-top: 16px; font-size: 13px; }
 }
 
 .header {

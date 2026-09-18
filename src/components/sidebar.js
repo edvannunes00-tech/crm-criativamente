@@ -59,10 +59,29 @@ export function renderSidebar(container, { perm, usuarioNome, papelNome, paginaA
         <div class="mt-2"><button class="btn-ghost" id="logoutBtn" style="padding:0; font-family:var(--font-mono); font-size:11px; text-decoration:underline;">Sair</button></div>
       </div>
     </aside>
-    <nav class="mobile-tabbar">${mobileLinksHtml}</nav>
+    <nav class="mobile-tabbar">${mobileLinksHtml}<button type="button" id="mobileMenuBtn" class="mobile-menu-btn"><span class="icon">☰</span>Menu</button></nav>
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" hidden>
+      <div class="mobile-menu-sheet">
+        <div class="mobile-menu-header">
+          <span class="mono-label">CRM</span>
+          <button type="button" class="btn-ghost" id="mobileMenuClose">Fechar</button>
+        </div>
+        <nav class="mobile-menu-links">${linksHtml.replace(/class="sidebar-link /g, 'class="mobile-menu-link ')}</nav>
+        <div class="mobile-menu-footer">
+          <div class="user-name">${usuarioNome || 'Usuário'}</div>
+          <div class="role-badge badge dot-neutro">${papelNome || '—'}</div>
+          <div class="mt-2"><button type="button" class="btn-ghost" id="mobileLogoutBtn" style="padding:0; font-family:var(--font-mono); font-size:12px; text-decoration:underline;">Sair</button></div>
+        </div>
+      </div>
+    </div>
   `;
 
   container.querySelector('#logoutBtn').addEventListener('click', logout);
+  container.querySelector('#mobileLogoutBtn').addEventListener('click', logout);
+  const overlay = container.querySelector('#mobileMenuOverlay');
+  container.querySelector('#mobileMenuBtn').addEventListener('click', () => { overlay.hidden = false; });
+  container.querySelector('#mobileMenuClose').addEventListener('click', () => { overlay.hidden = true; });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.hidden = true; });
 }
 
 export function renderHeader(container, { breadcrumb, title }) {
