@@ -49,7 +49,12 @@
         </div>
       </div>
 
-      <div class="sectiontitle">Agenda de publicação</div>
+      <div class="sectiontitle" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <span>Agenda de publicação</span>
+        <select id="filtroGrupoAgenda" style="padding:4px 8px; border-radius:var(--radius); border:0.5px solid var(--border-strong); background:var(--surface-2); font-size:12px; font-family:var(--font-mono);">
+          <option value="">Todos os grupos</option>
+        </select>
+      </div>
       <div class="card" id="agendaLista"><div class="empty-state">Carregando agenda…</div></div>
       <div class="card" style="margin-top:10px; padding:10px 16px;">
         <div class="agenda-row" style="border-bottom:none; padding:0;">
@@ -82,6 +87,8 @@
     const db = supabase.schema('afiliados');
     let GRUPOS = [];
     let REGRAS = null;
+    let AGENDA = [];
+    let filtroGrupoAgenda = '';
 
     await carregarTudo();
 
@@ -101,12 +108,27 @@
 
       GRUPOS = grupos || [];
       REGRAS = regras;
+      AGENDA = agenda || [];
       renderPausa();
       renderGrupos();
-      renderAgenda(agenda || []);
+      preencherFiltroGrupoAgenda();
+      renderAgenda();
       preencherSelectGrupos();
       renderRegras(REGRAS);
     }
+
+    function preencherFiltroGrupoAgenda() {
+      const sel = document.getElementById('filtroGrupoAgenda');
+      const atual = sel.value;
+      sel.innerHTML = '<option value="">Todos os grupos</option>' +
+        GRUPOS.map(g => `<option value="${g.id}">${g.nome}</option>`).join('');
+      sel.value = atual;
+    }
+
+    document.getElementById('filtroGrupoAgenda').addEventListener('change', (ev) => {
+      filtroGrupoAgenda = ev.target.value;
+      renderAgenda();
+    });
 
     function toast(kind, msg) {
       const c = document.getElementById('toastContainer');
@@ -217,9 +239,12 @@
       });
     }
 
-    function renderAgenda(agenda) {
+    function renderAgenda() {
+      const agenda = filtroGrupoAgenda ? AGENDA.filter(a => a.grupo_id === filtroGrupoAgenda) : AGENDA;
       if (agenda.length === 0) {
-        document.getElementById('agendaLista').innerHTML = '<div class="empty-state">Nenhum horário configurado ainda — sem dados.</div>';
+        document.getElementById('agendaLista').innerHTML = filtroGrupoAgenda
+          ? '<div class="empty-state">Nenhum horário para este grupo.</div>'
+          : '<div class="empty-state">Nenhum horário configurado ainda — sem dados.</div>';
         return;
       }
       document.getElementById('agendaLista').innerHTML = agenda.map(a => `
