@@ -8,6 +8,14 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/afiliados/styles/tokens.css" />
   <link rel="stylesheet" href="/afiliados/styles/components.css" />
+  <style>
+    .metricas-manuais { display:flex; align-items:center; gap:10px; margin-top:6px; }
+    .metricas-manuais label { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--ink-muted); }
+    .metricas-manuais input {
+      width:64px; padding:3px 6px; border-radius:var(--radius); border:0.5px solid var(--border-strong);
+      background:var(--surface-2); font-size:12px; font-family:var(--font-mono); text-align:right;
+    }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -26,6 +34,10 @@
       <div class="filters" id="filtroGrupo"></div>
       <div class="filters" id="filtroMarketplace"></div>
 
+      <div class="card" style="padding:10px 16px; margin-bottom:1rem; font-size:12.5px; color:var(--ink-2);">
+        Cliques, itens vendidos e comissão são <b>preenchidos manualmente</b> (confira no painel <span class="mono">affiliate.shopee.com.br</span>) — acesso à API oficial de afiliados ainda pendente de aprovação da Shopee.
+      </div>
+      <div class="kpirow" id="kpisManuais"></div>
       <div class="card" id="lista"><div class="empty-state">Carregando histórico…</div></div>
     </div>
   </div>
@@ -111,6 +123,7 @@
 
       const publicadas = TODAS.filter(o => o.status === 'PUBLISHED').length;
       document.getElementById('resumo').textContent = `${publicadas} publicadas · ${TODAS.length} no total · ${filtradas.length} exibidas`;
+      renderKpisManuais(filtradas.filter(o => o.status === 'PUBLISHED'));
 
       if (filtradas.length === 0) {
         document.getElementById('lista').innerHTML = '<div class="empty-state">Nenhum registro com esses filtros — sem dados.</div>';
@@ -131,11 +144,59 @@
               <span>${dateFromEpoch(melhorTimestamp(o))}</span>
               ${motivo ? `<span style="color:var(--danger)">${motivo}</span>` : ''}
             </div>
+            ${o.status === 'PUBLISHED' ? `
+            <div class="metricas-manuais">
+              <label>Cliques <input type="number" min="0" step="1" data-metrica="cliques" data-id="${o.id}" value="${o.cliques ?? ''}" placeholder="—" /></label>
+              <label>Vendidos <input type="number" min="0" step="1" data-metrica="itens_vendidos" data-id="${o.id}" value="${o.itens_vendidos ?? ''}" placeholder="—" /></label>
+              <label>Comissão R$ <input type="number" min="0" step="0.01" data-metrica="comissao_confirmada" data-id="${o.id}" value="${o.comissao_confirmada ?? ''}" placeholder="—" /></label>
+              ${o.metricas_atualizado_em ? `<span style="font-size:11px; color:var(--ink-muted)">atualizado ${new Date(o.metricas_atualizado_em).toLocaleDateString('pt-BR')}</span>` : ''}
+            </div>` : ''}
           </div>
           <div class="price">${money(o.preco_atual)}</div>
           <div class="pill ${statusPillClass(o.status)}">${statusLabel(o.status)}</div>
         </div>`;
       }).join('');
+
+      document.querySelectorAll('[data-metrica]').forEach(input => {
+        input.addEventListener('change', async () => {
+          const campo = input.dataset.metrica;
+          const id = input.dataset.id;
+          const valor = input.value === '' ? null : Number(input.value);
+          if (valor !== null && (Number.isNaN(valor) || valor < 0)) {
+            toast('err', 'Valor inválido.');
+            return;
+          }
+          const { error } = await db.from('ofertas').update({ [campo]: valor, metricas_atualizado_em: new Date().toISOString() }).eq('id', id);
+          if (error) { toast('err', 'Erro ao salvar: ' + error.message); return; }
+          const o = TODAS.find(x => x.id === id);
+          if (o) { o[campo] = valor; o.metricas_atualizado_em = new Date().toISOString(); }
+          toast('ok', 'Salvo.');
+        });
+      });
+    }
+
+    function renderKpisManuais(publicadasFiltradas) {
+      const comDado = publicadasFiltradas.filter(o => o.cliques != null || o.itens_vendidos != null || o.comissao_confirmada != null);
+      const somaCliques = publicadasFiltradas.reduce((s, o) => s + (o.cliques ?? 0), 0);
+      const somaVendidos = publicadasFiltradas.reduce((s, o) => s + (o.itens_vendidos ?? 0), 0);
+      const somaComissao = publicadasFiltradas.reduce((s, o) => s + (o.comissao_confirmada ?? 0), 0);
+      document.getElementById('kpisManuais').innerHTML = `
+        <div class="kpi"><div class="kpi-label">Cliques (preenchidos)</div><div class="kpi-value">${somaCliques}</div></div>
+        <div class="kpi"><div class="kpi-label">Itens vendidos (preenchidos)</div><div class="kpi-value">${somaVendidos}</div></div>
+        <div class="kpi"><div class="kpi-label">Comissão confirmada</div><div class="kpi-value">${money(somaComissao)}</div></div>
+        <div class="kpi"><div class="kpi-label">Publicadas com dado manual</div><div class="kpi-value">${comDado.length}/${publicadasFiltradas.length}</div></div>
+      `;
+    }
+
+    function toast(kind, msg) {
+      const container = document.body;
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed; bottom:20px; right:20px; padding:10px 16px; border-radius:8px; font-size:13px; z-index:60; box-shadow:0 2px 10px rgba(0,0,0,.08);';
+      el.style.background = kind === 'ok' ? 'var(--ok-soft)' : 'var(--danger-soft)';
+      el.style.color = kind === 'ok' ? 'var(--ok)' : 'var(--danger)';
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
     }
   </script>
 </body>
