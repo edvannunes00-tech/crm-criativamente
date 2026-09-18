@@ -542,6 +542,10 @@
               contrato, itens: itens || [], bonus: bonusLista || [],
               empresaNome: dadosFiscais.razao_social || empresaRow?.nome || 'Criativamente',
               contratadaDocumento: dadosFiscais.cnpj_cpf || null,
+              contratadaEndereco: dadosFiscais.endereco || null,
+              contratadaResponsavel: dadosFiscais.responsavel_legal || null,
+              contratadaResponsavelCpf: dadosFiscais.responsavel_cpf || null,
+              contratadaResponsavelCargo: dadosFiscais.responsavel_cargo || null,
               clienteSnapshot, versao: proximaVersao, assinatura,
             });
             await salvarDocumentoContrato({

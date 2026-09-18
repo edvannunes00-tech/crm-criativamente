@@ -2,7 +2,21 @@ import { requireSession, loadPermissoes } from './session.js';
 import { renderSidebar, renderHeader } from '../components/sidebar.js';
 import { ativarCamposDeData } from './format.js';
 
+function garantirFavicon() {
+  if (document.querySelector('link[rel="icon"]')) return;
+  const link = document.createElement('link');
+  link.rel = 'icon';
+  link.type = 'image/svg+xml';
+  link.href = '/favicon.svg';
+  document.head.appendChild(link);
+  const touchIcon = document.createElement('link');
+  touchIcon.rel = 'apple-touch-icon';
+  touchIcon.href = '/favicon.svg';
+  document.head.appendChild(touchIcon);
+}
+
 export async function initPage({ paginaAtual, breadcrumb, title }) {
+  garantirFavicon();
   const session = await requireSession();
   if (!session) throw new Error('sem sessão');
 

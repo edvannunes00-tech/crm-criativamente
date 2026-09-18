@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Seu contrato — Criativamente</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
   <style>
@@ -16,6 +18,12 @@
     .resumo-linha:last-child { border-bottom: none; }
     .item-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; }
     .step-hidden { display: none; }
+    .escopo-linha { font-size: 13.5px; line-height: 1.6; margin-top: 6px; }
+    .escopo-linha strong { font-weight: 700; }
+    .contrato-texto { max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; font-size: 12.5px; line-height: 1.6; }
+    .contrato-texto h4 { font-size: 12px; margin: 14px 0 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .contrato-texto h4:first-child { margin-top: 0; }
+    .contrato-texto p { margin: 0 0 4px; white-space: pre-line; }
   </style>
 </head>
 <body>
@@ -27,17 +35,22 @@
   <script type="module">
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
     import { formatarMoeda } from '/src/lib/format.js';
+    import { CLAUSULAS, montarContextoJuridico } from '/src/lib/contratoTexto.js';
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
     const hash = window.location.hash.replace('#', '');
     const params = new URLSearchParams(hash);
     const token = params.get('t');
     const conteudo = document.getElementById('conteudo');
+    const TOTAL_PASSOS = 6;
 
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
+
+    const ROTULO_INCLUSAO = { incluido: 'Incluído', nao_incluido: 'Não incluído', adicional: 'Contratação adicional (fora deste escopo)' };
+    const ROTULO_MODALIDADE = { remoto: 'Remota (gravação pelo CONTRATANTE, com orientação)', presencial: 'Presencial, em São Paulo e região (agendamento prévio)', hibrido: 'Híbrida' };
 
     function renderIndisponivel() {
       conteudo.innerHTML = `
@@ -57,6 +70,8 @@
     }
 
     let dadosContrato = null;
+    let dadosContratada = null;
+    let dadosPreenchidos = null;
 
     async function carregar() {
       try {
@@ -64,6 +79,7 @@
         const body = await resp.json();
         if (!body.disponivel) { renderIndisponivel(); return; }
         dadosContrato = body.contrato;
+        dadosContratada = body.contratada || null;
         renderRevisao();
       } catch {
         conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
@@ -73,7 +89,7 @@
     function renderRevisao() {
       const c = dadosContrato;
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 1 de 3 — O que você está contratando</div>
+        <div class="passo-label">Passo 1 de ${TOTAL_PASSOS} — O que você está contratando</div>
         <div class="card mb-4">
           <div style="font-size:17px; font-weight:800; margin-bottom:12px;">${escapeHtml(c.titulo)}</div>
           ${(c.itens || []).map((i) => `
@@ -97,7 +113,7 @@
 
     function renderFormularioDados() {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 2 de 3 — Seus dados</div>
+        <div class="passo-label">Passo 2 de ${TOTAL_PASSOS} — Seus dados</div>
         <div class="card">
           <form id="formDados">
             <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
@@ -105,18 +121,20 @@
             <div class="field"><label class="mono-label">Empresa / Razão social (se estiver assinando por uma empresa)</label><input type="text" id="dEmpresaMarca" /></div>
             <div class="field"><label class="mono-label">Telefone *</label><input type="text" id="dTelefone" required /></div>
             <div class="field"><label class="mono-label">E-mail *</label><input type="email" id="dEmail" required /></div>
-            <div class="field"><label class="mono-label">CEP</label><input type="text" id="dCep" /></div>
-            <div class="field"><label class="mono-label">Logradouro</label><input type="text" id="dLogradouro" /></div>
+            <p class="mono-label mt-4" style="opacity:0.7;">Endereço (obrigatório)</p>
+            <div class="field"><label class="mono-label">CEP *</label><input type="text" id="dCep" required /></div>
+            <div class="field"><label class="mono-label">Logradouro *</label><input type="text" id="dLogradouro" required /></div>
             <div class="flex gap-2">
-              <div class="field" style="flex:1;"><label class="mono-label">Número</label><input type="text" id="dNumero" /></div>
+              <div class="field" style="flex:1;"><label class="mono-label">Número *</label><input type="text" id="dNumero" required /></div>
               <div class="field" style="flex:2;"><label class="mono-label">Complemento</label><input type="text" id="dComplemento" /></div>
             </div>
-            <div class="field"><label class="mono-label">Bairro</label><input type="text" id="dBairro" /></div>
+            <div class="field"><label class="mono-label">Bairro *</label><input type="text" id="dBairro" required /></div>
             <div class="flex gap-2">
-              <div class="field" style="flex:2;"><label class="mono-label">Cidade</label><input type="text" id="dCidade" /></div>
-              <div class="field" style="flex:1;"><label class="mono-label">Estado</label><input type="text" id="dEstado" maxlength="2" /></div>
+              <div class="field" style="flex:2;"><label class="mono-label">Cidade *</label><input type="text" id="dCidade" required /></div>
+              <div class="field" style="flex:1;"><label class="mono-label">Estado *</label><input type="text" id="dEstado" maxlength="2" required /></div>
             </div>
-            <button type="submit" class="btn btn-primary btn-block" id="btnSalvarDados">Revisar e confirmar</button>
+            <p class="text-muted" style="font-size:11.5px; line-height:1.5;">Seus dados ficam vinculados exclusivamente a este contrato — não atualizam automaticamente nenhum outro cadastro.</p>
+            <button type="submit" class="btn btn-primary btn-block" id="btnSalvarDados">Continuar</button>
           </form>
         </div>
       `;
@@ -145,25 +163,92 @@
           });
           const body = await resp.json();
           if (!body.ok) { renderIndisponivel(); return; }
-          renderConfirmacao(dados);
+          dadosPreenchidos = dados;
+          renderEscopo();
         } catch {
           alert('Não foi possível salvar seus dados agora. Tente novamente.');
-          btn.disabled = false; btn.textContent = 'Revisar e confirmar';
+          btn.disabled = false; btn.textContent = 'Continuar';
         }
       });
     }
 
+    function renderEscopo() {
+      const itens = dadosContrato.itens || [];
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo 3 de ${TOTAL_PASSOS} — Escopo contratado</div>
+        <div class="card">
+          ${itens.map((i) => `
+            <div class="mb-4">
+              <div style="font-size:15px; font-weight:700; margin-bottom:4px;">${escapeHtml(i.descricao || 'Item contratado')}</div>
+              ${i.escopo_objeto ? `<p class="escopo-linha">${escapeHtml(i.escopo_objeto)}</p>` : ''}
+              ${i.escopo_quantidade_maxima_aulas ? `<p class="escopo-linha"><strong>Quantidade contratada:</strong> até ${i.escopo_quantidade_maxima_aulas} aulas (limite total contratado — aulas/regravações adicionais além disso podem gerar novo orçamento)</p>` : ''}
+              ${i.escopo_modalidade_gravacao ? `<p class="escopo-linha"><strong>Modalidade de gravação:</strong> ${escapeHtml(ROTULO_MODALIDADE[i.escopo_modalidade_gravacao] || i.escopo_modalidade_gravacao)}</p>` : ''}
+              ${i.escopo_equipamentos ? `<p class="escopo-linha"><strong>Equipamentos:</strong> ${escapeHtml(i.escopo_equipamentos)}</p>` : ''}
+              ${i.escopo_edicao ? `<p class="escopo-linha"><strong>Edição:</strong> ${escapeHtml(i.escopo_edicao)}</p>` : ''}
+              ${i.escopo_capas ? `<p class="escopo-linha"><strong>Capas/miniaturas:</strong> ${escapeHtml(i.escopo_capas)}</p>` : ''}
+              ${i.escopo_plataforma ? `<p class="escopo-linha"><strong>Plataforma:</strong> ${escapeHtml(i.escopo_plataforma)}</p>` : ''}
+              ${i.escopo_pagina_vendas ? `<p class="escopo-linha"><strong>Página de vendas:</strong> ${escapeHtml(i.escopo_pagina_vendas)}</p>` : ''}
+              ${['escopo_certificado', 'escopo_apostila_material', 'escopo_legendas', 'escopo_vinheta', 'escopo_site', 'escopo_midia_fisica'].some((k) => i[k]) ? `
+                <p class="escopo-linha"><strong>Itens adicionais:</strong> ${[
+                  i.escopo_certificado ? `Certificado: ${ROTULO_INCLUSAO[i.escopo_certificado]}` : null,
+                  i.escopo_apostila_material ? `Apostila/material: ${ROTULO_INCLUSAO[i.escopo_apostila_material]}` : null,
+                  i.escopo_legendas ? `Legendas: ${ROTULO_INCLUSAO[i.escopo_legendas]}` : null,
+                  i.escopo_vinheta ? `Vinheta: ${ROTULO_INCLUSAO[i.escopo_vinheta]}` : null,
+                  i.escopo_site ? `Site profissional: ${ROTULO_INCLUSAO[i.escopo_site]}` : null,
+                  i.escopo_midia_fisica ? `Mídia física: ${ROTULO_INCLUSAO[i.escopo_midia_fisica]}` : null,
+                ].filter(Boolean).map(escapeHtml).join(' · ')}</p>
+              ` : ''}
+              ${i.escopo_prazo_suporte_meses ? `<p class="escopo-linha"><strong>Suporte:</strong> ${i.escopo_prazo_suporte_meses} meses após a entrega, para orientação e auxílio operacional dentro deste escopo (não inclui novas gravações/regravações)</p>` : ''}
+              ${i.escopo_exclusoes ? `<p class="escopo-linha"><strong>Não incluído neste plano:</strong> ${escapeHtml(i.escopo_exclusoes)}</p>` : ''}
+              ${i.termos_contratuais ? `<p class="escopo-linha text-muted">${escapeHtml(i.termos_contratuais)}</p>` : ''}
+            </div>
+          `).join('') || '<p class="text-muted" style="font-size:13.5px;">O escopo detalhado deste contrato está descrito nas condições comerciais.</p>'}
+        </div>
+        <button class="btn btn-primary btn-block mt-4" id="btnProsseguirContrato">Ler o contrato completo</button>
+      `;
+      document.getElementById('btnProsseguirContrato').addEventListener('click', renderContratoCompleto);
+    }
+
+    function renderContratoCompleto() {
+      const ctx = montarContextoJuridico({
+        empresaNome: dadosContratada?.nome,
+        contratadaDocumento: dadosContratada?.documento,
+        contratadaEndereco: dadosContratada?.endereco,
+        contratadaResponsavel: dadosContratada?.responsavel,
+        contratadaResponsavelCpf: dadosContratada?.responsavelCpf,
+        contratadaResponsavelCargo: dadosContratada?.responsavelCargo,
+        clienteNomeCompleto: dadosPreenchidos.nome_completo,
+        clienteCpfCnpj: dadosPreenchidos.cpf_cnpj,
+        clienteEmpresaMarca: dadosPreenchidos.empresa_marca,
+        clienteEndereco: [dadosPreenchidos.endereco_logradouro, dadosPreenchidos.endereco_numero, dadosPreenchidos.endereco_complemento, dadosPreenchidos.endereco_bairro, dadosPreenchidos.endereco_cidade, dadosPreenchidos.endereco_estado, dadosPreenchidos.endereco_cep].filter(Boolean).join(', '),
+        itens: dadosContrato.itens,
+      });
+
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo 4 de ${TOTAL_PASSOS} — Contrato completo</div>
+        <div class="card">
+          <p style="font-size:13px; margin-bottom:10px;">Leia o contrato completo antes de prosseguir. Este é exatamente o texto que também vai compor o documento final (PDF).</p>
+          <div class="contrato-texto">
+            ${CLAUSULAS.map((c) => `<h4>${escapeHtml(c.titulo)}</h4><p>${escapeHtml(c.texto(ctx))}</p>`).join('')}
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block mt-4" id="btnLi">Li e entendi — prosseguir</button>
+      `;
+      document.getElementById('btnLi').addEventListener('click', () => renderConfirmacao(dadosPreenchidos));
+    }
+
     function renderConfirmacao(dados) {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 3 de 3 — Confirmação</div>
+        <div class="passo-label">Passo 5 de ${TOTAL_PASSOS} — Confirmação</div>
         <div class="card">
           <p style="font-size:14px; margin-bottom:8px;">Revise rapidamente:</p>
           <div class="resumo-linha"><span>Nome</span><span>${escapeHtml(dados.nome_completo)}</span></div>
           ${dados.empresa_marca ? `<div class="resumo-linha"><span>Empresa</span><span>${escapeHtml(dados.empresa_marca)}</span></div>` : ''}
           <div class="resumo-linha"><span>CPF/CNPJ</span><span>${escapeHtml(dados.cpf_cnpj)}</span></div>
           <div class="resumo-linha"><span>E-mail</span><span>${escapeHtml(dados.email)}</span></div>
+          <div class="resumo-linha"><span>Endereço</span><span style="text-align:right; max-width:60%;">${escapeHtml([dados.endereco_logradouro, dados.endereco_numero, dados.endereco_cidade, dados.endereco_estado].filter(Boolean).join(', '))}</span></div>
           <div class="resumo-linha"><span>Valor negociado</span><span style="font-weight:800;">${formatarMoeda(dadosContrato.valor_negociado_total)}</span></div>
-          <div class="check-linha mt-4"><input type="checkbox" id="cConfirmo" /><label for="cConfirmo" style="font-size:13.5px;">Confirmo que revisei meus dados e as condições apresentadas neste contrato.</label></div>
+          <div class="check-linha mt-4"><input type="checkbox" id="cConfirmo" /><label for="cConfirmo" style="font-size:13.5px;">Confirmo que li o contrato completo, revisei meus dados e as condições apresentadas.</label></div>
           <button class="btn btn-primary btn-block mt-2" id="btnConfirmar" disabled>Confirmar e continuar</button>
         </div>
       `;
@@ -179,7 +264,15 @@
             body: JSON.stringify({ token, acao: 'confirmar' }),
           });
           const body = await resp.json();
-          if (!body.ok) { renderIndisponivel(); return; }
+          if (!body.ok) {
+            if (body.motivo === 'dados_incompletos') {
+              alert('Alguns dados obrigatórios (incluindo endereço) ainda não foram preenchidos. Volte e complete o formulário.');
+              btn.disabled = false; btn.textContent = 'Confirmar e continuar';
+              return;
+            }
+            renderIndisponivel();
+            return;
+          }
           renderAssinatura();
         } catch {
           alert('Não foi possível confirmar agora. Tente novamente.');
@@ -190,7 +283,7 @@
 
     function renderAssinatura() {
       conteudo.innerHTML = `
-        <div class="passo-label">Assinatura</div>
+        <div class="passo-label">Passo 6 de ${TOTAL_PASSOS} — Assinatura</div>
         <div class="card">
           <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
           <canvas id="canvasAssinatura" style="width:100%; height:180px; background:#ffffff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>

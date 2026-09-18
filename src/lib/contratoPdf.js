@@ -23,7 +23,7 @@ function quebrarLinhas(doc, texto, larguraMax) {
 // (que pode mudar depois e não pode reescrever um contrato já formalizado).
 // assinatura: { dataUrl, confirmadoEm } opcional -- quando presente, o PDF
 // já sai com a assinatura capturada em vez do espaço em branco.
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, clienteSnapshot, versao, assinatura }) {
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, clienteSnapshot, versao, assinatura }) {
   const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
   const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
   const clienteEmpresaMarca = clienteSnapshot?.empresa_marca || null;
@@ -131,7 +131,10 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   novaLinha(16);
 
   // ---- Cláusulas ----
-  const ctx = montarContextoJuridico({ empresaNome, clienteNomeCompleto, clienteCpfCnpj });
+  const ctx = montarContextoJuridico({
+    empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo,
+    clienteNomeCompleto, clienteCpfCnpj, clienteEmpresaMarca, clienteEndereco, itens,
+  });
   CLAUSULAS.forEach((c) => {
     titulo(c.titulo, 11);
     paragrafo(c.texto(ctx));

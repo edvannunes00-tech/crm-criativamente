@@ -62,6 +62,7 @@
         <div class="field"><label class="mono-label">Descrição</label><textarea id="pDescricao" rows="2"></textarea></div>
         <div class="field"><label class="mono-label">Categoria</label><input type="text" id="pCategoria" /></div>
         <div class="field"><label class="mono-label">Preço padrão</label><input type="text" id="pPreco" placeholder="0,00" /></div>
+        <div class="field"><label class="mono-label">Termos contratuais (aparecem no contrato)</label><textarea id="pTermos" rows="4" placeholder="Limites, o que não está incluído, condições específicas do plano — vai direto pro contrato quando este produto for usado."></textarea></div>
         <div class="check-linha"><input type="checkbox" id="pAtivo" checked /><label for="pAtivo">Ativo</label></div>
         <div class="check-linha"><input type="checkbox" id="pExigeContrato" checked /><label for="pExigeContrato">Exige contrato</label></div>
         <div class="check-linha"><input type="checkbox" id="pGeraProjeto" /><label for="pGeraProjeto">Gera projeto por padrão</label></div>
@@ -183,6 +184,7 @@
           document.getElementById('pId').value = p.id;
           document.getElementById('pNome').value = p.nome;
           document.getElementById('pDescricao').value = p.descricao || '';
+          document.getElementById('pTermos').value = p.termos_contratuais || '';
           document.getElementById('pCategoria').value = p.categoria || '';
           document.getElementById('pPreco').value = p.preco_padrao != null ? String(p.preco_padrao).replace('.', ',') : '';
           document.getElementById('pAtivo').checked = p.ativo;
@@ -219,6 +221,7 @@
       const payload = {
         nome: document.getElementById('pNome').value.trim(),
         descricao: document.getElementById('pDescricao').value.trim() || null,
+        termos_contratuais: document.getElementById('pTermos').value.trim() || null,
         categoria: document.getElementById('pCategoria').value.trim() || null,
         preco_padrao: precoTexto ? Number(precoTexto) : null,
         ativo: document.getElementById('pAtivo').checked,
@@ -812,7 +815,25 @@
             <label class="mono-label">CNPJ/CPF</label>
             <input type="text" id="cfgFiscalCnpj" value="${fiscal.cnpj_cpf ? escapeHtml(fiscal.cnpj_cpf) : ''}" placeholder="Ex.: 00.000.000/0001-00" style="max-width:220px;" />
           </div>
-          <p class="text-muted" style="font-size:12px;">Usado na identificação da CONTRATADA no PDF do contrato e na assinatura. Se deixar em branco, o PDF mostra "não informado" — nunca inventa um número.</p>
+          <div class="field">
+            <label class="mono-label">Endereço (sede)</label>
+            <input type="text" id="cfgFiscalEndereco" value="${fiscal.endereco ? escapeHtml(fiscal.endereco) : ''}" placeholder="Endereço completo que aparece no contrato" />
+          </div>
+          <div class="field">
+            <label class="mono-label">Responsável legal</label>
+            <input type="text" id="cfgFiscalResponsavel" value="${fiscal.responsavel_legal ? escapeHtml(fiscal.responsavel_legal) : ''}" placeholder="Nome de quem representa a empresa no contrato" />
+          </div>
+          <div class="flex gap-2">
+            <div class="field" style="flex:1;">
+              <label class="mono-label">CPF do responsável</label>
+              <input type="text" id="cfgFiscalResponsavelCpf" value="${fiscal.responsavel_cpf ? escapeHtml(fiscal.responsavel_cpf) : ''}" />
+            </div>
+            <div class="field" style="flex:1;">
+              <label class="mono-label">Cargo do responsável</label>
+              <input type="text" id="cfgFiscalResponsavelCargo" value="${fiscal.responsavel_cargo ? escapeHtml(fiscal.responsavel_cargo) : ''}" placeholder="Ex.: Sócio-administrador" />
+            </div>
+          </div>
+          <p class="text-muted" style="font-size:12px;">Usado na identificação da CONTRATADA no PDF do contrato e na assinatura. Se deixar em branco, o PDF mostra "não informado" — nunca inventa um dado.</p>
           <button class="btn btn-primary mt-4" id="btnSalvarFiscal">Salvar</button>
         </div>
       `;
@@ -834,7 +855,14 @@
       container.querySelector('#btnSalvarFiscal').addEventListener('click', async () => {
         const razaoSocial = document.getElementById('cfgFiscalRazaoSocial').value.trim();
         const cnpjCpf = document.getElementById('cfgFiscalCnpj').value.trim();
-        await salvarConfiguracao('dados_fiscais_contratada', { razao_social: razaoSocial || null, cnpj_cpf: cnpjCpf || null });
+        const endereco = document.getElementById('cfgFiscalEndereco').value.trim();
+        const responsavelLegal = document.getElementById('cfgFiscalResponsavel').value.trim();
+        const responsavelCpf = document.getElementById('cfgFiscalResponsavelCpf').value.trim();
+        const responsavelCargo = document.getElementById('cfgFiscalResponsavelCargo').value.trim();
+        await salvarConfiguracao('dados_fiscais_contratada', {
+          razao_social: razaoSocial || null, cnpj_cpf: cnpjCpf || null, endereco: endereco || null,
+          responsavel_legal: responsavelLegal || null, responsavel_cpf: responsavelCpf || null, responsavel_cargo: responsavelCargo || null,
+        });
         alert('Salvo!');
       });
     }

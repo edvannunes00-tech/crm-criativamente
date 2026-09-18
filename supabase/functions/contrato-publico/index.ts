@@ -66,12 +66,13 @@ async function handleGet(req: Request): Promise<Response> {
   }
 
   // Payload minimo: so as colunas comerciais que a pagina publica
-  // pode mostrar. Nunca select("*"), nunca empresa_id/contato_id/
-  // dados internos de assinatura/validacao/observacoes.
+  // pode mostrar. Nunca select("*"), nunca contato_id/dados internos
+  // de assinatura/validacao/observacoes. empresa_id e selecionado so
+  // pra resolver nome/dados fiscais da CONTRATADA (nunca vai na resposta).
   const { data: contrato, error: contratoError } = await supabaseAdmin
     .from("contratos")
     .select(
-      "titulo, valor_tabela_total, valor_negociado_total, desconto_total, condicoes_pagamento_texto, condicoes_especiais"
+      "empresa_id, titulo, valor_tabela_total, valor_negociado_total, desconto_total, condicoes_pagamento_texto, condicoes_especiais"
     )
     .eq("id", acesso.contrato_id)
     .maybeSingle();
@@ -80,9 +81,17 @@ async function handleGet(req: Request): Promise<Response> {
     return jsonResponse({ disponivel: false }, 200);
   }
 
+  // Escopo detalhado e termos contratuais fazem parte do SNAPSHOT gravado
+  // no proprio item (migrations 23/24) -- nunca do catalogo vivo.
   const { data: itens } = await supabaseAdmin
     .from("contrato_itens")
-    .select("descricao, quantidade, valor_tabela_unitario, valor_negociado_unitario, valor_total")
+    .select(
+      "descricao, quantidade, valor_tabela_unitario, valor_negociado_unitario, valor_total, " +
+        "escopo_objeto, escopo_quantidade_maxima_aulas, escopo_modalidade_gravacao, escopo_equipamentos, " +
+        "escopo_direcao, escopo_edicao, escopo_capas, escopo_plataforma, escopo_pagina_vendas, " +
+        "escopo_certificado, escopo_apostila_material, escopo_legendas, escopo_vinheta, escopo_site, " +
+        "escopo_midia_fisica, escopo_prazo_suporte_meses, escopo_observacoes, escopo_exclusoes, termos_contratuais"
+    )
     .eq("contrato_id", acesso.contrato_id);
 
   const { data: bonus } = await supabaseAdmin
@@ -90,13 +99,40 @@ async function handleGet(req: Request): Promise<Response> {
     .select("descricao, quantidade")
     .eq("contrato_id", acesso.contrato_id);
 
+  // Identificacao da CONTRATADA (nome + dados fiscais configurados) --
+  // nunca inventada: se nao configurado, os campos vem nulos e a pagina
+  // publica/PDF mostram "nao informado" em vez de um dado fictício.
+  const { data: empresaRow } = await supabaseAdmin
+    .from("empresas")
+    .select("nome")
+    .eq("id", contrato.empresa_id)
+    .maybeSingle();
+
+  const { data: fiscalRow } = await supabaseAdmin
+    .from("configuracoes")
+    .select("valor")
+    .eq("empresa_id", contrato.empresa_id)
+    .eq("chave", "dados_fiscais_contratada")
+    .maybeSingle();
+
+  const fiscal = (fiscalRow?.valor as Record<string, string | null>) ?? {};
+  const { empresa_id: _empresaId, ...contratoPublico } = contrato;
+
   return jsonResponse(
     {
       disponivel: true,
       contrato: {
-        ...contrato,
+        ...contratoPublico,
         itens: itens ?? [],
         bonus: bonus ?? [],
+      },
+      contratada: {
+        nome: fiscal.razao_social || empresaRow?.nome || "Criativamente",
+        documento: fiscal.cnpj_cpf || null,
+        endereco: fiscal.endereco || null,
+        responsavel: fiscal.responsavel_legal || null,
+        responsavelCpf: fiscal.responsavel_cpf || null,
+        responsavelCargo: fiscal.responsavel_cargo || null,
       },
     },
     200
@@ -121,6 +157,7 @@ interface DadosCliente {
 function mapaErroNegocio(mensagem: string): string {
   if (mensagem.includes("link_indisponivel")) return "link_indisponivel";
   if (mensagem.includes("dados_nao_preenchidos")) return "dados_nao_preenchidos";
+  if (mensagem.includes("dados_incompletos")) return "dados_incompletos";
   if (mensagem.includes("assinatura_ja_registrada")) return "assinatura_ja_registrada";
   return "erro_desconhecido";
 }
