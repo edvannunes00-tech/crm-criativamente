@@ -275,6 +275,13 @@
             <input type="text" id="cFormaOutroDescricao" placeholder="Descreva a forma de pagamento" value="${escapeHtml(contrato.forma_pagamento_outro_descricao || '')}" ${podeMexer ? '' : 'disabled'} />
           </div>
 
+          <div class="field mt-4">
+            <label class="mono-label">Início da contagem do suporte</label>
+            <select id="cSuporteInicio" ${podeMexer ? '' : 'disabled'}>
+              <option value="entrega" ${contrato.suporte_inicio !== 'assinatura' ? 'selected' : ''}>A partir da entrega (padrão)</option>
+              <option value="assinatura" ${contrato.suporte_inicio === 'assinatura' ? 'selected' : ''}>A partir da assinatura do contrato</option>
+            </select>
+          </div>
           <div class="field mt-4"><label class="mono-label">Condições especiais</label><textarea id="cCondicoesEspeciais" rows="3" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea></div>
           <div class="field"><label class="mono-label">Observações internas</label><textarea id="cObservacoes" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.observacoes || '')}</textarea></div>
 
@@ -432,6 +439,7 @@
             parcelas_periodicidade: parcelasPeriodicidade,
             parcelas_observacao: parcelasObs,
             condicoes_pagamento_texto: resumo,
+            suporte_inicio: document.getElementById('cSuporteInicio').value,
             condicoes_especiais: document.getElementById('cCondicoesEspeciais').value.trim() || null,
             observacoes: document.getElementById('cObservacoes').value.trim() || null,
           }).eq('id', contratoId);

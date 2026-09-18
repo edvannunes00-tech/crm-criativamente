@@ -38,7 +38,12 @@ const ROTULO_MODALIDADE = {
 // Monta o texto do escopo detalhado a partir do SNAPSHOT gravado em cada
 // contrato_itens (nunca do catálogo vivo — um item já contratado preserva
 // exatamente o escopo vigente no momento em que foi adicionado ao contrato).
-export function montarTextoEscopo(itens) {
+const ROTULO_INICIO_SUPORTE = {
+  entrega: 'após a entrega',
+  assinatura: 'a partir da assinatura deste contrato',
+};
+
+export function montarTextoEscopo(itens, suporteInicio = 'entrega') {
   const itensComEscopo = (itens || []).filter((i) => i.escopo_objeto || i.termos_contratuais);
   if (itensComEscopo.length === 0) {
     return 'O escopo detalhado desta contratação está descrito no Quadro Comercial e nos itens que compõem este contrato.';
@@ -71,7 +76,7 @@ export function montarTextoEscopo(itens) {
     if (itensInclusao.length > 0) {
       linhas.push(itensInclusao.map(([nome, valor]) => `${nome}: ${ROTULO_ESCOPO_INCLUSAO[valor] || valor}`).join(' | '));
     }
-    if (item.escopo_prazo_suporte_meses) linhas.push(`Suporte: ${item.escopo_prazo_suporte_meses} meses após a entrega, para orientação e auxílio operacional dentro deste escopo — não inclui novas gravações, regravações, novas aulas ou serviços não previstos no plano.`);
+    if (item.escopo_prazo_suporte_meses) linhas.push(`Suporte: ${item.escopo_prazo_suporte_meses} meses ${ROTULO_INICIO_SUPORTE[suporteInicio] || ROTULO_INICIO_SUPORTE.entrega}, para orientação e auxílio operacional dentro deste escopo — não inclui novas gravações, regravações, novas aulas ou serviços não previstos no plano.`);
     if (item.escopo_observacoes) linhas.push(`Observações: ${item.escopo_observacoes}`);
     if (item.escopo_exclusoes) linhas.push(`Não incluído neste plano: ${item.escopo_exclusoes}`);
     if (item.termos_contratuais) linhas.push(item.termos_contratuais);
@@ -114,7 +119,7 @@ export const CLAUSULAS = [
   },
   {
     titulo: 'CLÁUSULA 6ª-B — DO SUPORTE',
-    texto: (ctx) => `O prazo de suporte previsto no Escopo Detalhado (${ctx.prazoSuporteMeses ? `${ctx.prazoSuporteMeses} meses a partir da entrega` : 'conforme o plano contratado'}) destina-se à orientação, ao auxílio operacional e à manutenção dentro do escopo efetivamente contratado, não configurando produção ilimitada. O suporte não inclui, automaticamente, novas gravações, regravações, novas aulas, novo projeto, redesign completo, criação de novos produtos ou quaisquer alterações extraordinárias não previstas no plano contratado. Solicitações que extrapolem o escopo contratado poderão ser orçadas separadamente, mediante novo acordo entre as partes.`,
+    texto: (ctx) => `O prazo de suporte previsto no Escopo Detalhado (${ctx.prazoSuporteMeses ? `${ctx.prazoSuporteMeses} meses ${ctx.suporteInicio === 'assinatura' ? 'a partir da assinatura deste contrato' : 'a partir da entrega'}` : 'conforme o plano contratado'}) destina-se à orientação, ao auxílio operacional e à manutenção dentro do escopo efetivamente contratado, não configurando produção ilimitada. O suporte não inclui, automaticamente, novas gravações, regravações, novas aulas, novo projeto, redesign completo, criação de novos produtos ou quaisquer alterações extraordinárias não previstas no plano contratado. Solicitações que extrapolem o escopo contratado poderão ser orçadas separadamente, mediante novo acordo entre as partes.`,
   },
   {
     titulo: 'CLÁUSULA 6ª-C — DOS ACESSOS A PLATAFORMAS E SISTEMAS',
@@ -170,6 +175,7 @@ export function montarContextoJuridico({
   clienteEmpresaMarca,
   clienteEndereco,
   itens,
+  suporteInicio,
 }) {
   const clienteIdentificacao = clienteEmpresaMarca
     ? `${clienteNomeCompleto || '—'} / ${clienteEmpresaMarca}`
@@ -191,7 +197,8 @@ export function montarContextoJuridico({
     clienteNomeCompleto: clienteNomeCompleto || '—',
     clienteCpfCnpj: clienteCpfCnpj || '—',
     clienteEndereco: clienteEndereco || null,
-    escopoTexto: montarTextoEscopo(itens),
+    escopoTexto: montarTextoEscopo(itens, suporteInicio),
+    suporteInicio: suporteInicio === 'assinatura' ? 'assinatura' : 'entrega',
     prazoSuporteMeses,
     foroComarca: 'domicílio da CONTRATADA',
   };

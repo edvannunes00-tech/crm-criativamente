@@ -221,6 +221,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   const ctx = montarContextoJuridico({
     empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo,
     clienteNomeCompleto, clienteCpfCnpj, clienteEmpresaMarca, clienteEndereco, itens,
+    suporteInicio: contrato.suporte_inicio,
   });
   CLAUSULAS.forEach((c) => {
     titulo(c.titulo, 11);

@@ -198,7 +198,7 @@
                   i.escopo_midia_fisica ? `Mídia física: ${ROTULO_INCLUSAO[i.escopo_midia_fisica]}` : null,
                 ].filter(Boolean).map(escapeHtml).join(' · ')}</p>
               ` : ''}
-              ${i.escopo_prazo_suporte_meses ? `<p class="escopo-linha"><strong>Suporte:</strong> ${i.escopo_prazo_suporte_meses} meses após a entrega, para orientação e auxílio operacional dentro deste escopo (não inclui novas gravações/regravações)</p>` : ''}
+              ${i.escopo_prazo_suporte_meses ? `<p class="escopo-linha"><strong>Suporte:</strong> ${i.escopo_prazo_suporte_meses} meses ${dadosContrato.suporte_inicio === 'assinatura' ? 'a partir da assinatura do contrato' : 'após a entrega'}, para orientação e auxílio operacional dentro deste escopo (não inclui novas gravações/regravações)</p>` : ''}
               ${i.escopo_exclusoes ? `<p class="escopo-linha"><strong>Não incluído neste plano:</strong> ${escapeHtml(i.escopo_exclusoes)}</p>` : ''}
               ${i.termos_contratuais ? `<p class="escopo-linha text-muted">${escapeHtml(i.termos_contratuais)}</p>` : ''}
             </div>
@@ -222,6 +222,7 @@
         clienteEmpresaMarca: dadosPreenchidos.empresa_marca,
         clienteEndereco: [dadosPreenchidos.endereco_logradouro, dadosPreenchidos.endereco_numero, dadosPreenchidos.endereco_complemento, dadosPreenchidos.endereco_bairro, dadosPreenchidos.endereco_cidade, dadosPreenchidos.endereco_estado, dadosPreenchidos.endereco_cep].filter(Boolean).join(', '),
         itens: dadosContrato.itens,
+        suporteInicio: dadosContrato.suporte_inicio,
       });
 
       conteudo.innerHTML = `

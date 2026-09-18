@@ -72,7 +72,7 @@ async function handleGet(req: Request): Promise<Response> {
   const { data: contrato, error: contratoError } = await supabaseAdmin
     .from("contratos")
     .select(
-      "empresa_id, titulo, valor_tabela_total, valor_negociado_total, desconto_total, condicoes_pagamento_texto, condicoes_especiais"
+      "empresa_id, titulo, suporte_inicio, valor_tabela_total, valor_negociado_total, desconto_total, condicoes_pagamento_texto, condicoes_especiais"
     )
     .eq("id", acesso.contrato_id)
     .maybeSingle();
