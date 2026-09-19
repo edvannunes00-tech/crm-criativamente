@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recorrências — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+
+        <div class="indicator-grid" id="indicadores"></div>
+
+        <div class="filter-bar">
+          <input type="search" id="busca" placeholder="Buscar por cliente ou contrato..." />
+          <div class="tabs" id="filtroStatus" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab active" data-filtro="">Todas</button>
+            <button class="tab" data-filtro="ativo">Em dia</button>
+            <button class="tab" data-filtro="pendente">Pendentes</button>
+            <button class="tab" data-filtro="inadimplente">Inadimplentes</button>
+            <button class="tab" data-filtro="cancelado">Canceladas</button>
+            <button class="tab" data-filtro="aguardando_pagamento">Aguardando</button>
+          </div>
+        </div>
+
+        <div class="table-wrap" id="tabelaWrap"><div style="padding:16px;"><div class="skeleton skeleton-row"></div></div></div>
+
+        <p class="text-muted mt-4" style="font-size:12px; line-height:1.6;">
+          O status financeiro só muda a partir de confirmações reais do Mercado Pago (webhook) — nada aqui é marcado
+          como pago manualmente. O status do contrato é independente do status financeiro.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
+
+    await initPage({ paginaAtual: 'recorrencias.html', breadcrumb: 'CRM / Financeiro / Recorrências', title: 'Recorrências' });
+
+    const FIN_LABEL = { aguardando_pagamento: 'Aguardando pagamento', ativo: 'Em dia', pendente: 'Pagamento pendente', inadimplente: 'Inadimplente', cancelado: 'Cancelado', encerrado: 'Encerrado' };
+    const FIN_BADGE = { aguardando_pagamento: 'dot-neutro', ativo: 'dot-sucesso', pendente: 'dot-info', inadimplente: 'dot-erro', cancelado: 'dot-neutro', encerrado: 'dot-neutro' };
+    const SUP_LABEL = { ativo: 'Suporte ativo', em_carencia: 'Em carência', suspenso: 'Suporte suspenso', encerrado: 'Encerrado', aguardando: 'Aguardando' };
+    const SUP_BADGE = { ativo: 'dot-sucesso', em_carencia: 'dot-info', suspenso: 'dot-erro', encerrado: 'dot-neutro', aguardando: 'dot-neutro' };
+    const SITE_LABEL = { nao_aplicavel: '—', no_ar: 'No ar', suspenso: 'Suspenso' };
+    const PLANO_LABEL = { manutencao_suporte: 'Manutenção e Suporte' };
+    const ULT_LABEL = { aprovada: 'aprovada', recusada: 'recusada', pendente: 'pendente', estornada: 'estornada', cancelada: 'cancelada' };
+
+    let todas = [];
+    let filtro = '';
+    let termo = '';
+
+    async function carregar() {
+      const { data, error } = await supabase.from('vw_recorrencias').select('*').order('proxima_cobranca_em', { ascending: true, nullsFirst: false }).limit(500);
+      if (error) {
+        if (await handleQueryError(error)) return;
+        document.getElementById('tabelaWrap').innerHTML = `<div class="error-state"><p>Não foi possível carregar as recorrências agora.</p></div>`;
+        return;
+      }
+      todas = data || [];
+      renderIndicadores();
+      renderTabela();
+    }
+
+    function contar(status) { return todas.filter((r) => r.status_financeiro === status).length; }
+
+    function renderIndicadores() {
+      const ativas = todas.filter((r) => r.status_financeiro === 'ativo');
+      const mensalEquivalente = ativas.reduce((s, r) => s + (r.periodicidade === 'anual' ? Number(r.valor) / 12 : Number(r.valor)), 0);
+      document.getElementById('indicadores').innerHTML = `
+        <div class="indicator-card"><div class="label mono-label">Em dia</div><div class="value">${contar('ativo')}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Pendentes</div><div class="value">${contar('pendente')}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Inadimplentes</div><div class="value">${contar('inadimplente')}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Canceladas</div><div class="value">${contar('cancelado')}</div></div>
+        <div class="indicator-card"><div class="label mono-label">Receita mensal recorrente</div><div class="value" style="font-size:20px;">${formatarMoeda(mensalEquivalente)}</div></div>
+      `;
+    }
+
+    function renderTabela() {
+      const wrap = document.getElementById('tabelaWrap');
+      const t = termo.toLowerCase();
+      const lista = todas.filter((r) => (!filtro || r.status_financeiro === filtro)
+        && (!t || (r.cliente_nome || '').toLowerCase().includes(t) || (r.contrato_titulo || '').toLowerCase().includes(t)));
+
+      if (lista.length === 0) {
+        wrap.innerHTML = `<div class="empty-state"><p>${todas.length === 0 ? 'Nenhuma recorrência ainda. Elas aparecem aqui quando um contrato de manutenção tiver a cobrança criada.' : 'Nenhuma recorrência com esse filtro.'}</p></div>`;
+        return;
+      }
+
+      wrap.innerHTML = `
+        <table class="data-table">
+          <thead><tr><th>Cliente</th><th>Plano</th><th>Valor</th><th>Financeiro</th><th>Suporte</th><th>Próxima cobrança</th><th>Última cobrança</th><th>Site</th></tr></thead>
+          <tbody>
+            ${lista.map((r) => `
+              <tr data-contrato="${r.contrato_id}" style="cursor:pointer;">
+                <td class="cell-primary">${escapeHtml(r.cliente_nome || '—')}<div class="cell-muted" style="font-size:11.5px;">Contrato: ${escapeHtml(r.contrato_titulo || '—')} (${escapeHtml(r.contrato_status || '—')})</div></td>
+                <td>${escapeHtml(PLANO_LABEL[r.plano] || r.plano)}<div class="cell-muted" style="font-size:11.5px;">${r.periodicidade === 'anual' ? 'Anual' : 'Mensal'}</div></td>
+                <td>${formatarMoeda(r.valor)}</td>
+                <td><span class="badge ${FIN_BADGE[r.status_financeiro] || 'dot-neutro'}"><span class="dot"></span>${FIN_LABEL[r.status_financeiro] || r.status_financeiro}</span></td>
+                <td><span class="badge ${SUP_BADGE[r.situacao_suporte] || 'dot-neutro'}"><span class="dot"></span>${SUP_LABEL[r.situacao_suporte] || r.situacao_suporte}</span>${r.situacao_suporte === 'em_carencia' && r.carencia_ate ? `<div class="cell-muted" style="font-size:11.5px;">até ${formatarData(r.carencia_ate)}</div>` : ''}</td>
+                <td class="cell-muted">${r.proxima_cobranca_em ? formatarData(r.proxima_cobranca_em) : '—'}</td>
+                <td class="cell-muted">${r.ultima_cobranca_em ? `${formatarData(r.ultima_cobranca_em)}${r.ultima_cobranca_status ? ` — ${escapeHtml(ULT_LABEL[r.ultima_cobranca_status] || r.ultima_cobranca_status)}` : ''}` : '—'}</td>
+                <td class="cell-muted">${SITE_LABEL[r.site_status] || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+      wrap.querySelectorAll('tbody tr').forEach((tr) => tr.addEventListener('click', () => { window.location.href = `/ficha-contrato.html?id=${tr.dataset.contrato}`; }));
+    }
+
+    document.getElementById('busca').addEventListener('input', (e) => { termo = e.target.value.trim(); renderTabela(); });
+    document.querySelectorAll('#filtroStatus .tab').forEach((btn) => btn.addEventListener('click', () => {
+      document.querySelectorAll('#filtroStatus .tab').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active'); filtro = btn.dataset.filtro; renderTabela();
+    }));
+
+    await carregar();
+  </script>
+</body>
+</html>

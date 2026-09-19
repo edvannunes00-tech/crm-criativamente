@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { label: 'Agenda', href: 'agenda.html', modulos: ['agenda'], mobileIcon: '▦' },
   { label: 'Projetos', href: 'projetos.html', modulos: ['projetos'] },
   { label: 'Financeiro', href: 'financeiro.html', modulos: ['financeiro', 'caixa'] },
+  { label: 'Recorrências', href: 'recorrencias.html', modulos: ['financeiro', 'contratos'] },
   { label: 'Gestão', href: 'gestao.html', modulos: ['gestao'] },
   { label: 'Configurações', href: 'configuracoes.html', modulos: ['configuracoes', 'usuarios', 'permissoes'] },
 ];
