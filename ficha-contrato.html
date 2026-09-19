@@ -47,6 +47,7 @@
     import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
     import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento, sugerirCondicaoPorFaixa } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
+    import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const { session, perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos / Ficha', title: 'Ficha do Contrato' });
     const empresaId = perm ? perm.empresa_id : null;
@@ -463,12 +464,14 @@
     async function abaDocumento() {
       const { data: versoes } = await supabase
         .from('contratos_versoes')
-        .select('versao, created_at, motivo_substituicao, documentos(nome_arquivo, categoria_documento, storage_path)')
+        .select('id, versao, created_at, motivo_substituicao, documentos(nome_arquivo, categoria_documento, storage_path)')
         .eq('contrato_id', contratoId)
         .order('versao', { ascending: false });
 
       const podeGerar = editavel();
       const lista = versoes || [];
+      const { data: jaAssinou } = await supabase.from('contrato_dados_cliente').select('id').eq('contrato_id', contratoId).not('assinatura_confirmada_em', 'is', null).limit(1).maybeSingle();
+      const podeExcluirVersao = podeExcluir && !jaAssinou && ['rascunho', 'enviado', 'aguardando_assinatura'].includes(contrato.status);
       const atual = lista[0]; // ja vem ordenado desc por versao
 
       const versoesHtml = lista.length === 0
@@ -481,7 +484,10 @@
                 <td>${escapeHtml((v.documentos && v.documentos.categoria_documento) || '—')}</td>
                 <td class="cell-muted" style="font-size:12px;">${escapeHtml(v.motivo_substituicao || '—')}</td>
                 <td class="cell-muted">${formatarData(v.created_at)}</td>
-                <td><button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button></td>
+                <td>
+                  <button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button>
+                  ${podeExcluirVersao && !(v.documentos && v.documentos.categoria_documento === 'assinado') ? `<button class="btn-ghost" data-excluir-versao="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Excluir</button>` : ''}
+                </td>
               </tr>
             `).join('')}
           </tbody></table></div>`;
@@ -508,6 +514,10 @@
               </div>
               <div class="check-linha"><input type="checkbox" id="ctIncluirAssinatura" /><label for="ctIncluirAssinatura">Incluir assinatura da contratada neste documento</label></div>
               <div id="ctAssinaturaBox" class="hidden mt-2">
+                <div class="flex gap-2 mb-2">
+                  <input type="text" id="ctTexto" placeholder="Ou digite o nome para assinar em letra cursiva" style="flex:2;" />
+                  <select id="ctFonte" style="flex:1;">${FONTES_ASSINATURA.map((f) => `<option value="${f.valor}">${f.label}</option>`).join('')}</select>
+                </div>
                 <canvas id="ctCanvas" style="width:100%; height:140px; background:#fff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
                 <button class="btn btn-secondary btn-sm mt-2" id="ctLimpar" type="button">Limpar assinatura</button>
               </div>
@@ -580,7 +590,14 @@
         window.addEventListener('mouseup', () => { desenhandoCt = false; });
         canvasCt.addEventListener('touchstart', iniCt, { passive: false }); canvasCt.addEventListener('touchmove', movCt, { passive: false });
         canvasCt.addEventListener('touchend', () => { desenhandoCt = false; });
-        document.getElementById('ctLimpar').addEventListener('click', () => { c2d.clearRect(0, 0, canvasCt.width, canvasCt.height); ctTemTraco = false; });
+        document.getElementById('ctLimpar').addEventListener('click', () => { c2d.clearRect(0, 0, canvasCt.width, canvasCt.height); document.getElementById('ctTexto').value = ''; ctTemTraco = false; });
+        garantirFontesAssinatura();
+        const atualizarTextoCt = async () => {
+          prepararCanvasCt();
+          ctTemTraco = await desenharTextoNoCanvas(canvasCt, document.getElementById('ctTexto').value, document.getElementById('ctFonte').value);
+        };
+        document.getElementById('ctTexto').addEventListener('input', atualizarTextoCt);
+        document.getElementById('ctFonte').addEventListener('change', atualizarTextoCt);
       }
       if (btn) {
         btn.addEventListener('click', async () => {
@@ -666,6 +683,21 @@
           }
         });
       }
+
+      document.querySelectorAll('[data-excluir-versao]').forEach((el) => {
+        el.addEventListener('click', async () => {
+          if (!confirm(`Excluir a versão v${el.dataset.versaoNum} do documento? Só é possível antes de o cliente assinar e não pode ser desfeito.`)) return;
+          const { data: caminho, error } = await supabase.rpc('excluir_versao_contrato', { p_versao_id: el.dataset.excluirVersao });
+          if (error) {
+            const msgs = { cliente_ja_assinou: 'O cliente já assinou — esta versão não pode mais ser excluída.', contrato_nao_permite_exclusao: 'O status atual do contrato não permite excluir versões.', sem_permissao: 'Você não tem permissão para excluir versões.', documento_assinado_nao_excluivel: 'Documentos assinados anexados não podem ser excluídos.' };
+            const chave = Object.keys(msgs).find((k) => (error.message || '').includes(k));
+            alert(chave ? msgs[chave] : 'Não foi possível excluir: ' + error.message);
+            return;
+          }
+          if (caminho) await supabase.storage.from('documentos-internos').remove([caminho]);
+          await abrirAba('documento');
+        });
+      });
 
       document.querySelectorAll('[data-baixar]').forEach((el) => {
         el.addEventListener('click', async () => {

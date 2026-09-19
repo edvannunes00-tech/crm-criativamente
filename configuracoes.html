@@ -287,18 +287,26 @@
               </div>
             </div>
             <div class="area-corpo">
-              ${areasDoTpl.map((area) => {
+              ${areasDoTpl.map((area, idxArea) => {
                 const etapasDaArea = (etapas || []).filter((e) => e.area_id === area.id);
                 return `
                   <div class="mb-4" data-area-id="${area.id}">
                     <div class="flex items-center justify-between">
                       <strong style="font-size:13px;">${escapeHtml(area.nome)}</strong>
-                      ${emEdicao ? `<button class="btn-icone btn-remover-area" data-id="${area.id}" title="Remover área">✕</button>` : ''}
+                      ${emEdicao ? `<span class="flex gap-2">
+                        <button class="btn-icone btn-mover" data-tipo="area" data-id="${area.id}" data-dir="-1" title="Mover área para cima" ${idxArea === 0 ? 'disabled' : ''}>▲</button>
+                        <button class="btn-icone btn-mover" data-tipo="area" data-id="${area.id}" data-dir="1" title="Mover área para baixo" ${idxArea === areasDoTpl.length - 1 ? 'disabled' : ''}>▼</button>
+                        <button class="btn-icone btn-remover-area" data-id="${area.id}" title="Remover área">✕</button>
+                      </span>` : ''}
                     </div>
-                    ${etapasDaArea.map((et) => `
+                    ${etapasDaArea.map((et, idxEt) => `
                       <div class="etapa-linha">
                         <span>${escapeHtml(et.nome)}</span>
-                        ${emEdicao ? `<button class="btn-icone btn-remover-etapa" data-id="${et.id}" title="Remover etapa">✕</button>` : ''}
+                        ${emEdicao ? `<span class="flex gap-2">
+                          <button class="btn-icone btn-mover" data-tipo="etapa" data-id="${et.id}" data-dir="-1" title="Mover etapa para cima" ${idxEt === 0 ? 'disabled' : ''}>▲</button>
+                          <button class="btn-icone btn-mover" data-tipo="etapa" data-id="${et.id}" data-dir="1" title="Mover etapa para baixo" ${idxEt === etapasDaArea.length - 1 ? 'disabled' : ''}>▼</button>
+                          <button class="btn-icone btn-remover-etapa" data-id="${et.id}" title="Remover etapa">✕</button>
+                        </span>` : ''}
                       </div>
                     `).join('') || (emEdicao ? '' : '<div class="text-muted" style="font-size:12px; padding:4px 0;">Sem etapas ainda.</div>')}
                     ${emEdicao ? comboAdicionar('etapa', area.id, nomesEtapasExistentes, 'area-id') : ''}
@@ -370,6 +378,30 @@
             const areaId = combo.dataset.areaId;
             const { data: existentes } = await supabase.from('projeto_template_etapas').select('id').eq('area_id', areaId);
             await supabase.from('projeto_template_etapas').insert({ area_id: areaId, nome, ordem: (existentes || []).length + 1 });
+          }
+          await abrirAba('templates');
+        });
+      });
+
+      // Reordenar: troca a posição com o vizinho e regrava ordem 1..n dos irmãos
+      // (evita ordens duplicadas). Só mexe no template, nunca em projetos já criados.
+      container.querySelectorAll('.btn-mover').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const tipo = btn.dataset.tipo;
+          const tabela = tipo === 'area' ? 'projeto_template_areas' : 'projeto_template_etapas';
+          const colunaPai = tipo === 'area' ? 'template_id' : 'area_id';
+          const dir = Number(btn.dataset.dir);
+          const { data: atual } = await supabase.from(tabela).select(`id, ${colunaPai}`).eq('id', btn.dataset.id).maybeSingle();
+          if (!atual) return;
+          const { data: irmaos } = await supabase.from(tabela).select('id, ordem').eq(colunaPai, atual[colunaPai]).order('ordem').order('id');
+          const lista = irmaos || [];
+          const i = lista.findIndex((x) => x.id === btn.dataset.id);
+          const j = i + dir;
+          if (i < 0 || j < 0 || j >= lista.length) return;
+          [lista[i], lista[j]] = [lista[j], lista[i]];
+          btn.disabled = true;
+          for (let k = 0; k < lista.length; k++) {
+            if (lista[k].ordem !== k + 1) await supabase.from(tabela).update({ ordem: k + 1 }).eq('id', lista[k].id);
           }
           await abrirAba('templates');
         });

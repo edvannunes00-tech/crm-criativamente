@@ -36,6 +36,7 @@
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
     import { formatarMoeda } from '/src/lib/format.js';
     import { CLAUSULAS, montarContextoJuridico } from '/src/lib/contratoTexto.js';
+    import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
     const hash = window.location.hash.replace('#', '');
@@ -188,14 +189,14 @@
               ${i.escopo_capas ? `<p class="escopo-linha"><strong>Capas/miniaturas:</strong> ${escapeHtml(i.escopo_capas)}</p>` : ''}
               ${i.escopo_plataforma ? `<p class="escopo-linha"><strong>Plataforma:</strong> ${escapeHtml(i.escopo_plataforma)}</p>` : ''}
               ${i.escopo_pagina_vendas ? `<p class="escopo-linha"><strong>Página de vendas:</strong> ${escapeHtml(i.escopo_pagina_vendas)}</p>` : ''}
-              ${['escopo_certificado', 'escopo_apostila_material', 'escopo_legendas', 'escopo_vinheta', 'escopo_site', 'escopo_midia_fisica'].some((k) => i[k]) ? `
+              ${['escopo_certificado', 'escopo_apostila_material', 'escopo_legendas', 'escopo_vinheta', 'escopo_site', 'escopo_midia_fisica'].some((k) => i[k] === 'incluido' || i[k] === 'adicional') ? `
                 <p class="escopo-linha"><strong>Itens adicionais:</strong> ${[
-                  i.escopo_certificado ? `Certificado: ${ROTULO_INCLUSAO[i.escopo_certificado]}` : null,
-                  i.escopo_apostila_material ? `Apostila/material: ${ROTULO_INCLUSAO[i.escopo_apostila_material]}` : null,
-                  i.escopo_legendas ? `Legendas: ${ROTULO_INCLUSAO[i.escopo_legendas]}` : null,
-                  i.escopo_vinheta ? `Vinheta: ${ROTULO_INCLUSAO[i.escopo_vinheta]}` : null,
-                  i.escopo_site ? `Site profissional: ${ROTULO_INCLUSAO[i.escopo_site]}` : null,
-                  i.escopo_midia_fisica ? `Mídia física: ${ROTULO_INCLUSAO[i.escopo_midia_fisica]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_certificado) ? `Certificado: ${ROTULO_INCLUSAO[i.escopo_certificado]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_apostila_material) ? `Apostila/material: ${ROTULO_INCLUSAO[i.escopo_apostila_material]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_legendas) ? `Legendas: ${ROTULO_INCLUSAO[i.escopo_legendas]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_vinheta) ? `Vinheta: ${ROTULO_INCLUSAO[i.escopo_vinheta]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_site) ? `Site profissional: ${ROTULO_INCLUSAO[i.escopo_site]}` : null,
+                  ['incluido', 'adicional'].includes(i.escopo_midia_fisica) ? `Mídia física: ${ROTULO_INCLUSAO[i.escopo_midia_fisica]}` : null,
                 ].filter(Boolean).map(escapeHtml).join(' · ')}</p>
               ` : ''}
               ${i.escopo_prazo_suporte_meses ? `<p class="escopo-linha"><strong>Suporte:</strong> ${i.escopo_prazo_suporte_meses} meses ${dadosContrato.suporte_inicio === 'assinatura' ? 'a partir da assinatura do contrato' : 'após a entrega'}, para orientação e auxílio operacional dentro deste escopo (não inclui novas gravações/regravações)</p>` : ''}
@@ -287,6 +288,10 @@
         <div class="passo-label">Passo 6 de ${TOTAL_PASSOS} — Assinatura</div>
         <div class="card">
           <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
+          <div class="flex gap-2 mb-2">
+            <input type="text" id="assinaturaTexto" placeholder="Ou digite seu nome para assinar em letra cursiva" style="flex:2;" />
+            <select id="assinaturaFonte" style="flex:1;">${FONTES_ASSINATURA.map((f) => `<option value="${f.valor}">${f.label}</option>`).join('')}</select>
+          </div>
           <canvas id="canvasAssinatura" style="width:100%; height:180px; background:#ffffff; border:1px solid var(--line-strong); border-radius:var(--radius); touch-action:none; cursor:crosshair;"></canvas>
           <div class="flex gap-2 mt-2">
             <button class="btn btn-secondary btn-sm" id="btnLimparAssinatura">Limpar</button>
@@ -319,6 +324,7 @@
         ctx2d.strokeStyle = '#12141a';
       }
       ajustarTamanhoCanvas();
+      garantirFontesAssinatura();
 
       let desenhando = false;
       let temTraco = false;
@@ -345,6 +351,14 @@
       }
       function parar() { desenhando = false; }
 
+      async function atualizarAssinaturaDigitada() {
+        const desenhou = await desenharTextoNoCanvas(canvas, document.getElementById('assinaturaTexto').value, document.getElementById('assinaturaFonte').value);
+        temTraco = desenhou;
+        document.getElementById('btnConfirmarAssinatura').disabled = !desenhou;
+      }
+      document.getElementById('assinaturaTexto').addEventListener('input', atualizarAssinaturaDigitada);
+      document.getElementById('assinaturaFonte').addEventListener('change', atualizarAssinaturaDigitada);
+
       canvas.addEventListener('mousedown', iniciar);
       canvas.addEventListener('mousemove', mover);
       window.addEventListener('mouseup', parar);
@@ -354,6 +368,7 @@
 
       document.getElementById('btnLimparAssinatura').addEventListener('click', () => {
         ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+        document.getElementById('assinaturaTexto').value = '';
         temTraco = false;
         document.getElementById('btnConfirmarAssinatura').disabled = true;
       });

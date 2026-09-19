@@ -1,0 +1,10 @@
+-- Contratos — Migration 27
+-- Exclusao controlada de versoes de PDF antes da assinatura do cliente.
+-- contratos_versoes nao tem policy de DELETE (historico imutavel por padrao);
+-- crm.excluir_versao_contrato() e a unica porta, com regras explicitas:
+--  * permissao contratos/excluir na empresa do contrato
+--  * contrato em rascunho/enviado/aguardando_assinatura
+--  * cliente ainda NAO assinou
+--  * versao nao e documento assinado anexado (categoria 'assinado')
+-- Devolve o storage_path para o chamador remover o arquivo do bucket.
+-- (corpo completo aplicado via apply_migration 27_excluir_versao_contrato)
