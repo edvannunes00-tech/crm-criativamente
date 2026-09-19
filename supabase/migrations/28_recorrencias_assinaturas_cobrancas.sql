@@ -1,0 +1,11 @@
+-- Contratos — Migration 28
+-- Recorrencia (manutencao e suporte): contrato, assinatura recorrente, cobranca
+-- e evento de webhook sao entidades distintas e relacionadas.
+-- Tabelas: crm.assinaturas_recorrentes, crm.cobrancas_recorrentes,
+-- crm.eventos_webhook_pagamento (idempotencia), view crm.vw_recorrencias
+-- (security_invoker; situacao_suporte derivada: ativo / em_carencia / suspenso /
+-- encerrado / aguardando). Status financeiro separado do status do contrato.
+-- Escrita somente por service_role (backend/webhook); usuarios so leem, via RLS
+-- (contratos ou financeiro 'visualizar'). Indices unicos: uma recorrencia viva por
+-- contrato, provider_subscription_id, provider_payment_id e evento externo.
+-- (corpo completo aplicado via apply_migration 28_recorrencias_assinaturas_cobrancas)
