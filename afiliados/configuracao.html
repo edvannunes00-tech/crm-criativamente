@@ -49,6 +49,19 @@
           <div class="switch" id="pauseSwitch" style="cursor:pointer"></div>
         </div>
       </div>
+      <div class="card pause-banner" style="margin-top:10px;">
+        <div>
+          <div style="font-size:13.5px; font-weight:500;">Intervalo do worker</div>
+          <div style="font-size:12px; color:var(--ink-2)" id="intervaloDesc">carregando…</div>
+        </div>
+        <select id="intervaloSelect" style="padding:6px 8px; border-radius:var(--radius); border:0.5px solid var(--border-strong); background:var(--surface-2); font-size:12.5px; font-family:var(--font-mono);">
+          <option value="10">a cada 10 min</option>
+          <option value="15">a cada 15 min</option>
+          <option value="20">a cada 20 min</option>
+          <option value="30">a cada 30 min</option>
+          <option value="60">a cada 60 min</option>
+        </select>
+      </div>
 
       <div class="sectiontitle" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <span>Agenda de publicação</span>
@@ -90,6 +103,7 @@
     let GRUPOS = [];
     let REGRAS = null;
     let AGENDA = [];
+    let ULTIMA_EXECUCAO = null;
     let filtroGrupoAgenda = '';
     let novoGrupoSelecionados = new Set();
 
@@ -112,7 +126,10 @@
       GRUPOS = grupos || [];
       REGRAS = regras;
       AGENDA = agenda || [];
+      const { data: ultima } = await db.from('execucoes_ciclo').select('iniciado_em').order('iniciado_em', { ascending: false }).limit(1);
+      ULTIMA_EXECUCAO = ultima?.[0]?.iniciado_em || null;
       renderPausa();
+      renderIntervalo();
       renderGrupos();
       preencherFiltroGrupoAgenda();
       renderAgenda();
@@ -154,6 +171,23 @@
         const { error } = await db.from('regras_gerais').update({ automacao_pausada: !pausada, updated_at: new Date().toISOString() }).eq('id', 1);
         if (error) { toast('err', 'Não foi possível alterar: ' + error.message); return; }
         toast('ok', pausada ? 'Automação reativada.' : 'Automação pausada.');
+        carregarTudo();
+      };
+    }
+
+    function renderIntervalo() {
+      const sel = document.getElementById('intervaloSelect');
+      const desc = document.getElementById('intervaloDesc');
+      const min = REGRAS?.intervalo_minutos ?? 10;
+      sel.value = String(min);
+      const ultima = ULTIMA_EXECUCAO
+        ? new Date(typeof ULTIMA_EXECUCAO === 'number' ? ULTIMA_EXECUCAO * 1000 : ULTIMA_EXECUCAO).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : 'nenhuma ainda';
+      desc.textContent = `Última execução: ${ultima}. O worker acorda a cada 10 min; intervalos maiores fazem ele pular as rodadas no meio (a agenda continua valendo, com tolerância maior).`;
+      sel.onchange = async () => {
+        const { error } = await db.from('regras_gerais').update({ intervalo_minutos: Number(sel.value), updated_at: new Date().toISOString() }).eq('id', 1);
+        if (error) { toast('err', 'Não foi possível alterar: ' + error.message); sel.value = String(min); return; }
+        toast('ok', `Intervalo alterado para ${sel.value} min — vale a partir da próxima rodada.`);
         carregarTudo();
       };
     }
