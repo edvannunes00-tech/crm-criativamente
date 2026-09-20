@@ -13,6 +13,7 @@
 // ============================================================
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { validarDocumento } from "../_shared/documento.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -273,6 +274,9 @@ async function handlePost(req: Request): Promise<Response> {
   if (acao === "salvar") {
     if (!dados || typeof dados !== "object") {
       return jsonResponse({ error: "dados e obrigatorio para acao=salvar" }, 400);
+    }
+    if (!validarDocumento(String(dados.cpf_cnpj ?? "")).ok) {
+      return jsonResponse({ ok: false, motivo: "documento_invalido" }, 200);
     }
     const { error } = await supabaseAdmin.rpc("salvar_rascunho_dados_contrato", {
       p_token_hash: tokenHash,

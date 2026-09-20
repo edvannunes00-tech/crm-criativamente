@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
       },
       contratada_assinatura_path: caminho, contratada_assinada_em: new Date().toISOString(),
     }).eq("id", contrato.id).is("contratada_assinada_em", null);
-    if (updErr) return json({ ok: false, motivo: "falha_ao_salvar" }, 500);
+    if (updErr) { console.error("Falha ao registrar assinatura da contratada:", updErr.message); return json({ ok: false, motivo: "falha_ao_salvar", error: "Nao foi possivel registrar a assinatura." }, 500); }
     await db.from("atividades").insert({ empresa_id: contrato.empresa_id, contrato_id: contrato.id, tipo: "contratada_assinou", titulo: "Assinatura da contratada registrada no contrato", usuario_id: userId });
     return json({ ok: true });
   } catch (_e) {

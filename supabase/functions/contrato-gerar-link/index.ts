@@ -206,6 +206,23 @@ Deno.serve(async (req: Request) => {
       };
     }
 
+    if (assinaturaBytes && snapshotContratada) {
+      const caminho = `${contrato.empresa_id}/contratos/${contrato.id}/assinatura-contratada-${Date.now()}.png`;
+      const { error: upErr } = await supabaseAdmin.storage.from("documentos-internos").upload(caminho, assinaturaBytes, { contentType: "image/png", upsert: false });
+      if (upErr) return jsonResponse({ error: "Nao foi possivel salvar a assinatura da contratada. Tente novamente.", motivo: "falha_assinatura_contratada" }, 500);
+      const { error: updErr } = await supabaseAdmin.from("contratos").update({
+        contratada_snapshot: snapshotContratada, contratada_assinatura_path: caminho, contratada_assinada_em: new Date().toISOString(),
+      }).eq("id", contrato.id).is("contratada_assinada_em", null);
+      if (updErr) {
+        console.error("Falha ao registrar assinatura da contratada:", updErr.message);
+        return jsonResponse({ error: "Nao foi possivel registrar a assinatura da contratada no contrato. O link nao foi gerado.", motivo: "falha_assinatura_contratada" }, 500);
+      }
+      await supabaseAdmin.from("atividades").insert({
+        empresa_id: contrato.empresa_id, contrato_id: contrato.id, tipo: "contratada_assinou",
+        titulo: "Assinatura da contratada registrada no contrato (ao gerar o link)", usuario_id: userData.user.id,
+      });
+    }
+
     const token = gerarTokenBase64Url();
     const tokenHash = await sha256Hex(token);
     const tokenCifrado = await cifrarToken(token);
@@ -226,22 +243,6 @@ Deno.serve(async (req: Request) => {
 
     if (insertError || !link) {
       return jsonResponse({ error: "Falha ao criar o link." }, 500);
-    }
-
-    if (assinaturaBytes && snapshotContratada) {
-      const caminho = `${contrato.empresa_id}/contratos/${contrato.id}/assinatura-contratada-${Date.now()}.png`;
-      const { error: upErr } = await supabaseAdmin.storage.from("documentos-internos").upload(caminho, assinaturaBytes, { contentType: "image/png", upsert: false });
-      if (!upErr) {
-        await supabaseAdmin.from("contratos").update({
-          contratada_snapshot: snapshotContratada, contratada_assinatura_path: caminho, contratada_assinada_em: new Date().toISOString(),
-        }).eq("id", contrato.id);
-        await supabaseAdmin.from("atividades").insert({
-          empresa_id: contrato.empresa_id, contrato_id: contrato.id, tipo: "contratada_assinou",
-          titulo: "Assinatura da contratada registrada no contrato (ao gerar o link)", usuario_id: userData.user.id,
-        });
-      } else {
-        console.error("Falha ao registrar assinatura da contratada:", upErr.message);
-      }
     }
 
     if (abertos.length > 0) {

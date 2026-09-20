@@ -38,6 +38,7 @@
     import { formatarMoeda } from '/src/lib/format.js';
     import { clausulasDoContrato, montarContextoJuridico } from '/src/lib/contratoTexto.js';
     import { gerarPdfContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
+    import { validarDocumento, mascararDocumento } from '/src/lib/documento.js';
     import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
@@ -158,7 +159,7 @@
         <div class="card">
           <form id="formDados">
             <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
-            <div class="field"><label class="mono-label">CPF/CNPJ *</label><input type="text" id="dCpfCnpj" required /></div>
+            <div class="field"><label class="mono-label">CPF ou CNPJ *</label><input type="text" id="dCpfCnpj" required autocomplete="off" placeholder="000.000.000-00 ou 00.000.000/0000-00" /><span id="dCpfCnpjErro" style="display:none; color:var(--status-erro); font-size:12px;">CPF ou CNPJ inválido. Confira os números.</span></div>
             <div class="field"><label class="mono-label">Empresa / Razão social (se estiver assinando por uma empresa)</label><input type="text" id="dEmpresaMarca" /></div>
             <div class="field"><label class="mono-label">Telefone *</label><input type="text" id="dTelefone" required /></div>
             <div class="field"><label class="mono-label">E-mail *</label><input type="email" id="dEmail" required /></div>
@@ -185,8 +186,13 @@
         const mapa = { dNome: 'nome_completo', dCpfCnpj: 'cpf_cnpj', dEmpresaMarca: 'empresa_marca', dTelefone: 'telefone', dEmail: 'email', dCep: 'endereco_cep', dLogradouro: 'endereco_logradouro', dNumero: 'endereco_numero', dComplemento: 'endereco_complemento', dBairro: 'endereco_bairro', dCidade: 'endereco_cidade', dEstado: 'endereco_estado' };
         Object.entries(mapa).forEach(([id, k]) => { const el = document.getElementById(id); if (el && previo[k]) el.value = previo[k]; });
       }
+      const campoDoc = document.getElementById('dCpfCnpj');
+      const erroDoc = document.getElementById('dCpfCnpjErro');
+      campoDoc.addEventListener('input', () => { campoDoc.value = mascararDocumento(campoDoc.value); erroDoc.style.display = 'none'; });
+      if (campoDoc.value) campoDoc.value = mascararDocumento(campoDoc.value);
       document.getElementById('formDados').addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (!validarDocumento(campoDoc.value).ok) { erroDoc.style.display = 'block'; campoDoc.focus(); return; }
         const btn = document.getElementById('btnSalvarDados');
         btn.disabled = true; btn.textContent = 'Salvando...';
         const dados = {
@@ -209,7 +215,10 @@
             body: JSON.stringify({ token, acao: 'salvar', dados }),
           });
           const body = await resp.json();
-          if (!body.ok) { renderIndisponivel(); return; }
+          if (!body.ok) {
+            if (body.motivo === 'documento_invalido') { erroDoc.style.display = 'block'; btn.disabled = false; btn.textContent = 'Continuar'; return; }
+            renderIndisponivel(); return;
+          }
           dadosPreenchidos = dados;
           try { sessionStorage.setItem('contratoDados', JSON.stringify(dados)); } catch { /* opcional */ }
           renderEscopo();
@@ -567,8 +576,20 @@
               <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Agora é só aguardar os próximos passos da equipe Criativamente para a validação final do contrato.</p>
               <button class="btn btn-primary btn-block mt-4" id="btnBaixarAssinado">Salvar contrato em PDF (versão assinada)</button>
               <p class="text-muted mt-2" style="font-size:11.5px; line-height:1.5;">Guarde este arquivo. A versão oficial também fica registrada com a Criativamente.</p>
+              <p class="text-muted mt-2" id="statusCopiaEmail" style="font-size:12px; line-height:1.5;">Enviando uma cópia para o seu e-mail…</p>
             </div>
           `;
+          (async () => {
+            const alvo = document.getElementById('statusCopiaEmail');
+            try {
+              const blob = await gerarPdfPublico({ leitura: false, assinaturaCliente: imagemBase64 });
+              if (!blob) throw new Error('sem pdf');
+              const base64 = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = reject; r.readAsDataURL(blob); });
+              const r = await fetch(`${SUPABASE_URL}/functions/v1/contrato-enviar-copia`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, pdf_base64: base64 }) });
+              const j = await r.json();
+              alvo.textContent = j.ok ? 'Enviamos uma cópia do contrato assinado para o seu e-mail (veja também a caixa de spam).' : 'Não foi possível enviar a cópia por e-mail agora. Use o botão acima para salvar o PDF, ou solicite a segunda via depois.';
+            } catch { alvo.textContent = 'Não foi possível enviar a cópia por e-mail agora. Use o botão acima para salvar o PDF, ou solicite a segunda via depois.'; }
+          })();
           document.getElementById('btnBaixarAssinado').addEventListener('click', async () => {
             const b = document.getElementById('btnBaixarAssinado'); b.disabled = true; const t = b.textContent; b.textContent = 'Gerando PDF...';
             try {

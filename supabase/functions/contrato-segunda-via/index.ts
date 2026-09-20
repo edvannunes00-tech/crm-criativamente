@@ -14,6 +14,8 @@
 // ============================================================
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { enviarResend, templateAviso, textoParaHtml } from "../_shared/email.ts";
+import { normalizarDocumento, validarDocumento } from "../_shared/documento.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,22 +29,6 @@ const MENSAGEM_GENERICA =
 const LIMITE_TENTATIVAS = 5;
 const JANELA_MINUTOS = 15;
 
-const STATUS_ELEGIVEIS = ["assinado", "validado"];
-
-interface EmailSender {
-  enviar(params: { destinatario: string; assunto: string; anexoUrl: string }): Promise<{
-    enviado: boolean;
-    motivo?: string;
-  }>;
-}
-
-// Nao envia nada de verdade -- so documenta que a integracao ainda
-// nao existe. Nunca finge sucesso.
-const NoopEmailSender: EmailSender = {
-  async enviar() {
-    return { enviado: false, motivo: "provedor_nao_configurado" };
-  },
-};
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -64,7 +50,7 @@ async function sha256Hex(texto: string): Promise<string> {
 }
 
 function normalizarCpfCnpj(valor: string): string {
-  return valor.replace(/\D/g, "");
+  return normalizarDocumento(valor);
 }
 
 // O caller pode injetar um primeiro valor forjado na cadeia XFF --
@@ -107,11 +93,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const cpfCnpjNormalizado = normalizarCpfCnpj(cpfCnpjBruto);
-    // So valida FORMATO (11 = CPF, 14 = CNPJ) -- nunca revela se o
-    // valor "existe" em algum lugar. Formato claramente invalido e
-    // um erro estrutural do chamador, nao uma tentativa de consulta.
-    if (cpfCnpjNormalizado.length !== 11 && cpfCnpjNormalizado.length !== 14) {
-      return jsonResponse({ error: "cpf_cnpj com formato invalido" }, 400);
+    // Valida formato e digitos verificadores (CPF, CNPJ e CNPJ alfanumerico). Erro estrutural do chamador,
+    // nunca revela se o valor "existe" em algum lugar.
+    if (!validarDocumento(cpfCnpjNormalizado).ok) {
+      return jsonResponse({ error: "cpf_cnpj invalido" }, 400);
     }
 
     const cpfCnpjHash = await sha256Hex(cpfCnpjNormalizado);
@@ -148,8 +133,10 @@ Deno.serve(async (req: Request) => {
     // (o snapshot pode ter sido salvo com pontuacao).
     const { data: candidatos } = await supabaseAdmin
       .from("contrato_dados_cliente")
-      .select("contrato_id, empresa_id, email, cpf_cnpj")
-      .not("cpf_cnpj", "is", null);
+      .select("contrato_id, empresa_id, email, cpf_cnpj, link_id, nome_completo")
+      .not("cpf_cnpj", "is", null)
+      .not("assinatura_confirmada_em", "is", null)
+      .order("assinatura_confirmada_em", { ascending: false });
 
     const candidato = (candidatos ?? []).find(
       (c) => normalizarCpfCnpj(c.cpf_cnpj ?? "") === cpfCnpjNormalizado
@@ -170,7 +157,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", candidato.contrato_id)
       .maybeSingle();
 
-    if (!contrato || !STATUS_ELEGIVEIS.includes(contrato.status)) {
+    if (!contrato || contrato.status === "cancelado") {
       await supabaseAdmin.from("contrato_segunda_via_solicitacoes").insert({
         empresa_id: candidato.empresa_id,
         contrato_id: candidato.contrato_id,
@@ -187,6 +174,7 @@ Deno.serve(async (req: Request) => {
       .from("contratos_versoes")
       .select("versao, documento_id")
       .eq("contrato_id", contrato.id)
+      .is("excluido_em", null)
       .order("versao", { ascending: false });
 
     let storagePath: string | null = null;
@@ -201,6 +189,11 @@ Deno.serve(async (req: Request) => {
         storagePath = documento.storage_path;
         break;
       }
+    }
+    // Sem versao oficial assinada ainda: usa a copia gerada quando o cliente assinou.
+    if (!storagePath && candidato.link_id) {
+      const { data: lk } = await supabaseAdmin.from("contrato_links").select("copia_storage_path").eq("id", candidato.link_id).maybeSingle();
+      storagePath = lk?.copia_storage_path ?? null;
     }
 
     if (!storagePath) {
@@ -228,11 +221,26 @@ Deno.serve(async (req: Request) => {
       .select("id")
       .single();
 
-    const resultadoEnvio = await NoopEmailSender.enviar({
-      destinatario: candidato.email ?? "",
-      assunto: "Segunda via do seu contrato",
-      anexoUrl: storagePath,
-    });
+    let enviado = false;
+    try {
+      const apiKey = Deno.env.get("RESEND_API_KEY");
+      const from = Deno.env.get("RESEND_FROM_EMAIL");
+      if (apiKey && from && candidato.email) {
+        const { data: arquivo } = await supabaseAdmin.storage.from("documentos-internos").download(storagePath);
+        if (arquivo) {
+          const bytes = new Uint8Array(await arquivo.arrayBuffer());
+          let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+          const primeiroNome = String(candidato.nome_completo ?? "").split(" ")[0];
+          const assunto = "Segunda via do seu contrato — Criativamente";
+          const msg = `Olá${primeiroNome ? `, ${primeiroNome}` : ""}!\n\nConforme solicitado, segue em anexo a segunda via do seu contrato.\n\nSe você não fez esta solicitação, pode ignorar este e-mail: nenhum dado foi alterado.`;
+          await enviarResend(apiKey, from, candidato.email, assunto, templateAviso(assunto, assunto, textoParaHtml(msg)), { anexos: [{ filename: "contrato.pdf", base64: btoa(bin) }] });
+          enviado = true;
+        }
+      }
+    } catch (e) {
+      console.error("Falha ao enviar segunda via:", e instanceof Error ? e.message : String(e));
+    }
+    const resultadoEnvio = { enviado };
 
     if (solicitacao) {
       const { error: updateStatusError } = await supabaseAdmin

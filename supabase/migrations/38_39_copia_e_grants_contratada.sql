@@ -1,0 +1,3 @@
+-- Aplicadas via apply_migration:
+-- 38: service_role UPDATE (contratada_snapshot, contratada_assinatura_path, contratada_assinada_em) em contratos; contrato_links.copia_enviada_em.
+-- 39: contrato_links.copia_storage_path e grants de leitura necessarios as funcoes de copia/segunda via.

@@ -21,7 +21,7 @@
     <div class="card">
       <p style="font-size:14px; margin-bottom:16px;">Informe o CPF/CNPJ utilizado no contrato para receber uma cópia por e-mail.</p>
       <form id="formSegundaVia">
-        <div class="field"><label class="mono-label">CPF/CNPJ *</label><input type="text" id="fCpfCnpj" required /></div>
+        <div class="field"><label class="mono-label">CPF ou CNPJ *</label><input type="text" id="fCpfCnpj" required inputmode="text" autocomplete="off" placeholder="000.000.000-00 ou 00.000.000/0000-00" /></div>
         <button type="submit" class="btn btn-primary btn-block" id="btnSolicitar">Solicitar segunda via</button>
       </form>
       <div id="resultado" class="mt-4"></div>
@@ -30,6 +30,9 @@
 
   <script type="module">
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
+    import { validarDocumento, mascararDocumento } from '/src/lib/documento.js';
+    const campo = document.getElementById('fCpfCnpj');
+    campo.addEventListener('input', () => { campo.value = mascararDocumento(campo.value); });
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-segunda-via`;
 
@@ -40,7 +43,12 @@
       btn.disabled = true; btn.textContent = 'Enviando...';
       resultado.innerHTML = '';
 
-      const cpfCnpj = document.getElementById('fCpfCnpj').value.trim();
+      const cpfCnpj = campo.value.trim();
+      if (!validarDocumento(cpfCnpj).ok) {
+        resultado.innerHTML = `<p style="font-size:13.5px; color:var(--status-erro); line-height:1.6;">CPF ou CNPJ inválido. Confira os números e tente de novo.</p>`;
+        btn.disabled = false; btn.textContent = 'Solicitar segunda via';
+        return;
+      }
 
       try {
         const resp = await fetch(FUNCTION_URL, {
@@ -48,7 +56,7 @@
           body: JSON.stringify({ cpf_cnpj: cpfCnpj }),
         });
         const body = await resp.json();
-        resultado.innerHTML = `<p style="font-size:13.5px; color:var(--gray-1); line-height:1.6;">${body.mensagem || body.error || 'Solicitação recebida.'}</p>`;
+        resultado.innerHTML = `<p style="font-size:13.5px; color:var(--gray-1); line-height:1.6;">${body.mensagem || 'CPF ou CNPJ inválido. Confira os números e tente de novo.'}</p>`;
       } catch {
         resultado.innerHTML = `<p style="font-size:13.5px; color:var(--gray-1);">Não foi possível processar sua solicitação agora. Tente novamente em instantes.</p>`;
       } finally {
