@@ -45,8 +45,11 @@
     const params = new URLSearchParams(hash);
     let token = params.get('t');
     try {
-      if (token) sessionStorage.setItem('contratoToken', token);
-      else token = sessionStorage.getItem('contratoToken');
+      if (token) {
+        // Link novo (token diferente do ultimo usado neste navegador): descarta dados de outro link.
+        if (sessionStorage.getItem('contratoToken') !== token) sessionStorage.removeItem('contratoDados');
+        sessionStorage.setItem('contratoToken', token);
+      } else token = sessionStorage.getItem('contratoToken');
     } catch { /* sem sessionStorage: segue so com o hash */ }
     const conteudo = document.getElementById('conteudo');
     const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/recorrencia-checkout`;

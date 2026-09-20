@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration: excluir_versao_contrato passa a ocultar (soft) em qualquer status, so administrador.

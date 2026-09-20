@@ -474,7 +474,7 @@
       const lista = (versoes || []).filter((v) => !v.excluido_em);
       const lixeiraVersoes = (versoes || []).filter((v) => v.excluido_em);
       const { data: jaAssinou } = await supabase.from('contrato_dados_cliente').select('id').eq('contrato_id', contratoId).not('assinatura_confirmada_em', 'is', null).limit(1).maybeSingle();
-      const podeExcluirVersao = podeAdministrar && !jaAssinou && ['rascunho', 'enviado', 'aguardando_assinatura'].includes(contrato.status);
+      const podeExcluirVersao = podeAdministrar && ['rascunho', 'enviado', 'aguardando_assinatura'].includes(contrato.status);
       const atual = lista[0]; // ja vem ordenado desc por versao
 
       const versoesHtml = lista.length === 0
@@ -489,7 +489,7 @@
                 <td class="cell-muted">${formatarData(v.created_at)}</td>
                 <td>
                   <button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button>
-                  ${podeExcluirVersao && !(v.documentos && v.documentos.categoria_documento === 'assinado') ? `<button class="btn-ghost" data-excluir-versao="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Mover para a lixeira</button>` : ''}
+                  ${podeExcluirVersao && !(v.documentos && v.documentos.categoria_documento === 'assinado') ? `<button class="btn-ghost" data-excluir-versao="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline;">Ocultar</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -537,13 +537,13 @@
         </div>
         ${podeAdministrar && lixeiraVersoes.length > 0 ? `
         <div class="card mb-4">
-          <div class="mono-label mb-4">Lixeira de documentos</div>
+          <div class="mono-label mb-4">Documentos ocultos</div>
           <div class="table-wrap"><table class="data-table"><thead><tr><th>Versão</th><th>Arquivo</th><th>Movido em</th><th></th></tr></thead><tbody>
             ${lixeiraVersoes.map((v) => `<tr>
               <td>v${v.versao}</td>
               <td class="cell-primary">${escapeHtml((v.documentos && v.documentos.nome_arquivo) || '—')}</td>
               <td class="cell-muted">${formatarData(v.excluido_em, true)}</td>
-              <td><button class="btn-ghost" data-restaurar-versao="${v.id}" style="font-size:12px; text-decoration:underline;">Restaurar</button>
+              <td><button class="btn-ghost" data-restaurar-versao="${v.id}" style="font-size:12px; text-decoration:underline;">Mostrar de novo</button>
                   <button class="btn-ghost" data-excluir-versao-def="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Excluir definitivamente</button></td>
             </tr>`).join('')}
           </tbody></table></div>
@@ -741,7 +741,7 @@
       const falhaVersao = (error) => { const k = Object.keys(msgVersao).find((x) => (error.message || '').includes(x)); alert(k ? msgVersao[k] : 'Não foi possível concluir: ' + error.message); };
       document.querySelectorAll('[data-excluir-versao]').forEach((el) => {
         el.addEventListener('click', async () => {
-          if (!confirm(`Mover a versão v${el.dataset.versaoNum} do documento para a lixeira? Um administrador pode restaurá-la depois.`)) return;
+          if (!confirm(`Ocultar a versão v${el.dataset.versaoNum} da lista? O histórico é preservado e você pode mostrá-la de novo depois.`)) return;
           const { error } = await supabase.rpc('excluir_versao_contrato', { p_versao_id: el.dataset.excluirVersao });
           if (error) { falhaVersao(error); return; }
           await abrirAba('documento');
@@ -798,7 +798,7 @@
                   ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') && l.token_cifrado ? `<button class="btn-ghost" data-abrir-link="${l.id}" style="font-size:12px; text-decoration:underline;">Abrir</button> <button class="btn-ghost" data-copiar-link="${l.id}" style="font-size:12px; text-decoration:underline;">Copiar</button> <button class="btn-ghost" data-email-link="${l.id}" style="font-size:12px; text-decoration:underline;">E-mail</button>` : ''}
                   ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') && !l.token_cifrado ? `<span class="text-muted" style="font-size:11px;" title="Criado antes do recurso de reabrir. Gere um novo link.">sem acesso ao link</span>` : ''}
                   ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') ? `<button class="btn-ghost" data-revogar="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Revogar</button>` : ''}
-                  ${podeAdministrar && (l.status === 'revogado' || l.status === 'expirado') ? `<button class="btn-ghost" data-lixeira-link="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Lixeira</button>` : ''}
+                  ${podeAdministrar && (l.status === 'revogado' || l.status === 'expirado' || l.status === 'confirmado') ? `<button class="btn-ghost" data-lixeira-link="${l.id}" style="font-size:12px; text-decoration:underline;">Ocultar</button>` : ''}
                 </td>
               </tr>
             `).join('')}
@@ -815,12 +815,12 @@
         </div>
         ${podeAdministrar && linksLixeira.length > 0 ? `
         <div class="card mt-4">
-          <div class="mono-label mb-4">Lixeira de links</div>
+          <div class="mono-label mb-4">Links ocultos</div>
           <div class="table-wrap"><table class="data-table"><thead><tr><th>Status</th><th>Criado em</th><th></th></tr></thead><tbody>
             ${linksLixeira.map((l) => `<tr>
               <td><span class="badge dot-neutro"><span class="dot"></span>${LINK_STATUS_LABEL[l.status] || l.status}</span></td>
               <td class="cell-muted">${formatarData(l.created_at, true)}</td>
-              <td><button class="btn-ghost" data-restaurar-link="${l.id}" style="font-size:12px; text-decoration:underline;">Restaurar</button>
+              <td><button class="btn-ghost" data-restaurar-link="${l.id}" style="font-size:12px; text-decoration:underline;">Mostrar de novo</button>
                   <button class="btn-ghost" data-excluir-link-def="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Excluir definitivamente</button></td>
             </tr>`).join('')}
           </tbody></table></div>
@@ -938,14 +938,14 @@
           catch (err) { alert('Não foi possível enviar: ' + err.message); }
         });
       });
-      const msgLink = { sem_permissao: 'Somente administradores podem fazer isso.', link_assinado_nao_excluivel: 'Link de contrato assinado não pode ser excluído (histórico).', revogue_antes: 'Revogue o link antes de enviá-lo para a lixeira.', link_com_dados_do_cliente: 'Este link tem dados do cliente e é mantido no histórico; ele permanece na lixeira.' };
+      const msgLink = { sem_permissao: 'Somente administradores podem fazer isso.', revogue_antes: 'Revogue o link antes de enviá-lo para a lixeira.', link_com_dados_do_cliente: 'Este link tem dados do cliente e é mantido no histórico; ele permanece oculto.' };
       const rpcLink = async (nome, id, confirma) => {
         if (confirma && !confirm(confirma)) return;
         const { error } = await supabase.rpc(nome, { p_link_id: id });
         if (error) { const k = Object.keys(msgLink).find((x) => (error.message || '').includes(x)); alert(k ? msgLink[k] : 'Falha: ' + error.message); return; }
         await abrirAba('link');
       };
-      document.querySelectorAll('[data-lixeira-link]').forEach((el) => el.addEventListener('click', () => rpcLink('excluir_link_contrato', el.dataset.lixeiraLink, 'Mover este link para a lixeira? Você pode restaurá-lo depois.')));
+      document.querySelectorAll('[data-lixeira-link]').forEach((el) => el.addEventListener('click', () => rpcLink('excluir_link_contrato', el.dataset.lixeiraLink, 'Ocultar este link da lista? O histórico é preservado e você pode mostrá-lo de novo depois.')));
       document.querySelectorAll('[data-restaurar-link]').forEach((el) => el.addEventListener('click', () => rpcLink('restaurar_link_contrato', el.dataset.restaurarLink)));
       document.querySelectorAll('[data-excluir-link-def]').forEach((el) => el.addEventListener('click', () => rpcLink('excluir_definitivamente_link_contrato', el.dataset.excluirLinkDef, 'Excluir este link DEFINITIVAMENTE? Não dá para desfazer.')));
 

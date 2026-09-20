@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration: excluir_link_contrato passa a ocultar tambem links assinados (soft, so administrador).
