@@ -133,6 +133,7 @@ Deno.serve(async (req: Request) => {
         status: "pending", // sem token de cartao: o pagador escolhe o meio no checkout do proprio Mercado Pago
         // Sem o token do link na URL: o navegador guarda o token localmente e volta por aqui.
         back_url: `${SITE_URL}/contrato-publico.html?pagamento=retorno&ref=${a!.id}`,
+        notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`,
         auto_recurring: {
           frequency: periodicidade === "anual" ? 12 : 1, frequency_type: "months",
           transaction_amount: valor, currency_id: "BRL",
