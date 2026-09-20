@@ -1,0 +1,6 @@
+-- Aplicada via apply_migration (33_link_recuperavel_contratada_lixeira):
+-- contrato_links.token_cifrado (link recuperavel, AES-GCM), excluido_em/por (lixeira);
+-- contratos.contratada_snapshot/contratada_assinatura_path/contratada_assinada_em (assinatura da contratada
+-- registrada ao gerar o link, protegida por trigger); contratos_versoes.excluido_em/por;
+-- excluir_versao_contrato passa a ser lixeira (somente administrador) + restaurar/excluir definitivamente;
+-- funcoes excluir/restaurar/excluir_definitivamente_link_contrato.

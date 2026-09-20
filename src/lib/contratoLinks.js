@@ -39,3 +39,7 @@ export async function revogarLinkContrato(linkId, motivoRevogacao) {
 export async function cancelarRecorrencia(assinaturaId, motivo) {
   return chamarFunction('recorrencia-cancelar', { assinatura_id: assinaturaId, motivo: motivo || null });
 }
+
+export async function abrirLinkContrato(linkId) {
+  return chamarFunction('contrato-abrir-link', { link_id: linkId });
+}

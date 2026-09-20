@@ -47,11 +47,11 @@ async function temRecorrencia(supabaseAdmin: ReturnType<typeof criarSupabaseAdmi
   return (data ?? []).length > 0;
 }
 
-async function dadosContratada(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin>, empresaId: string) {
+async function dadosContratada(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin>, empresaId: string, contratoId?: string) {
   const { data: empresaRow } = await supabaseAdmin.from("empresas").select("nome").eq("id", empresaId).maybeSingle();
   const { data: fiscalRow } = await supabaseAdmin.from("configuracoes").select("valor").eq("empresa_id", empresaId).eq("chave", "dados_fiscais_contratada").maybeSingle();
   const fiscal = (fiscalRow?.valor as Record<string, string | null>) ?? {};
-  return {
+  let base = {
     nome: fiscal.razao_social || empresaRow?.nome || "Criativamente",
     documento: fiscal.cnpj_cpf || null,
     endereco: fiscal.endereco || null,
@@ -59,6 +59,21 @@ async function dadosContratada(supabaseAdmin: ReturnType<typeof criarSupabaseAdm
     responsavelCpf: fiscal.responsavel_cpf || null,
     responsavelCargo: fiscal.responsavel_cargo || null,
   };
+  let assinatura: { dataUrl: string; assinadoEm: string } | null = null;
+  if (contratoId) {
+    // Dados e assinatura da contratada REGISTRADOS no contrato (ao gerar o link) prevalecem sobre a config atual.
+    const { data: c } = await supabaseAdmin.from("contratos").select("contratada_snapshot, contratada_assinatura_path, contratada_assinada_em").eq("id", contratoId).maybeSingle();
+    if (c?.contratada_snapshot) base = { ...base, ...(c.contratada_snapshot as Record<string, string | null>) } as typeof base;
+    if (c?.contratada_assinatura_path && c.contratada_assinada_em) {
+      const { data: arq } = await supabaseAdmin.storage.from("documentos-internos").download(c.contratada_assinatura_path);
+      if (arq) {
+        const bytes = new Uint8Array(await arq.arrayBuffer());
+        let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+        assinatura = { dataUrl: `data:image/png;base64,${btoa(bin)}`, assinadoEm: c.contratada_assinada_em };
+      }
+    }
+  }
+  return { ...base, assinatura };
 }
 
 async function handleGet(req: Request): Promise<Response> {
@@ -84,25 +99,18 @@ async function handleGet(req: Request): Promise<Response> {
 
   // Depois que o cliente confirma os dados o link fica "dados_confirmados" (etapa intermediaria:
   // falta pagamento, se houver, e a ASSINATURA). So a assinatura torna o link "confirmado" e trava.
-  // Devolve so o minimo, sem dados pessoais. Contrato de recorrencia ja assinado continua
-  // mostrando a tela final.
+  // Contrato de recorrencia ja assinado continua mostrando a tela final. Nunca devolve dados pessoais.
+  let posConfirmacao = false;
+  let assinado = false;
   if (acesso && (acesso.status_link === "dados_confirmados" || acesso.status_link === "confirmado")) {
     const recorrente = await temRecorrencia(supabaseAdmin, acesso.contrato_id);
     if (acesso.status_link === "dados_confirmados" || recorrente) {
-      const { data: c } = await supabaseAdmin.from("contratos").select("empresa_id, titulo").eq("id", acesso.contrato_id).maybeSingle();
-      if (c) {
-        return jsonResponse({
-          disponivel: true,
-          pos_confirmacao: true,
-          assinado: acesso.status_link === "confirmado",
-          contrato: { titulo: c.titulo, recorrencia: recorrente },
-          contratada: await dadosContratada(supabaseAdmin, c.empresa_id),
-        }, 200);
-      }
+      posConfirmacao = true;
+      assinado = acesso.status_link === "confirmado";
     }
   }
 
-  if (!acesso || acesso.status_link !== "ativo") {
+  if (!acesso || (acesso.status_link !== "ativo" && !posConfirmacao)) {
     return jsonResponse({ disponivel: false }, 200);
   }
 
@@ -146,13 +154,16 @@ async function handleGet(req: Request): Promise<Response> {
   return jsonResponse(
     {
       disponivel: true,
+      pos_confirmacao: posConfirmacao,
+      assinado,
       contrato: {
         ...contratoPublico,
+        codigo: String(acesso.contrato_id).slice(0, 8),
         itens: itens ?? [],
         bonus: bonus ?? [],
         recorrencia,
       },
-      contratada: await dadosContratada(supabaseAdmin, contrato.empresa_id),
+      contratada: await dadosContratada(supabaseAdmin, contrato.empresa_id, acesso.contrato_id),
     },
     200
   );

@@ -32,10 +32,12 @@
     <div id="conteudo"><div class="skeleton" style="height:200px;"></div></div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script type="module">
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
     import { formatarMoeda } from '/src/lib/format.js';
     import { clausulasDoContrato, montarContextoJuridico } from '/src/lib/contratoTexto.js';
+    import { gerarPdfContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
     import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
@@ -91,6 +93,35 @@
       } catch {
         conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
       }
+    }
+
+    function dadosSalvosDoCliente() {
+      if (dadosPreenchidos) return dadosPreenchidos;
+      try { return JSON.parse(sessionStorage.getItem('contratoDados') || 'null'); } catch { return null; }
+    }
+
+    // Gera o PDF do contrato no navegador. leitura=true: marca d'água "NÃO ASSINADO"; senão, cópia assinada.
+    async function gerarPdfPublico({ leitura, assinaturaCliente }) {
+      const dados = dadosSalvosDoCliente();
+      if (!dados || !dadosContrato || !window.jspdf) return null;
+      return gerarPdfContrato({
+        contrato: dadosContrato, itens: dadosContrato.itens || [], bonus: dadosContrato.bonus || [],
+        empresaNome: dadosContratada?.nome, contratadaDocumento: dadosContratada?.documento, contratadaEndereco: dadosContratada?.endereco,
+        contratadaResponsavel: dadosContratada?.responsavel, contratadaResponsavelCpf: dadosContratada?.responsavelCpf, contratadaResponsavelCargo: dadosContratada?.responsavelCargo,
+        contratadaAssinaturaDataUrl: dadosContratada?.assinatura?.dataUrl || null, contratadaAssinadaEm: dadosContratada?.assinatura?.assinadoEm || null,
+        marcaDagua: leitura ? { linha1: 'NÃO ASSINADO', linha2: 'Versão apenas para leitura' } : null,
+        logoDataUrl: await carregarLogoDataUrl(), clienteSnapshot: dados, versao: leitura ? 'para leitura' : 'assinada',
+        assinatura: assinaturaCliente ? { dataUrl: assinaturaCliente, confirmadoEm: new Date().toISOString() } : null,
+      });
+    }
+    async function abrirPdf(blob, nomeArquivo, baixar) {
+      const url = URL.createObjectURL(blob);
+      if (baixar) {
+        const a = document.createElement('a'); a.href = url; a.download = nomeArquivo; document.body.appendChild(a); a.click(); a.remove();
+      } else {
+        window.open(url, '_blank');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
 
     function renderRevisao() {
@@ -247,9 +278,24 @@
           <div class="contrato-texto">
             ${clausulasDoContrato(ctx).map((c) => `<h4>${escapeHtml(c.titulo)}</h4><p>${escapeHtml(c.texto(ctx))}</p>`).join('')}
           </div>
+          ${dadosContratada?.assinatura ? `
+          <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--line-strong);">
+            <span class="mono-label">CONTRATADA</span>
+            <div style="background:#fff; border-radius:6px; padding:6px; margin-top:6px; max-width:240px;"><img src="${dadosContratada.assinatura.dataUrl}" alt="Assinatura da contratada" style="width:100%; height:auto; display:block;" /></div>
+            <p class="text-muted" style="font-size:11.5px; margin-top:4px;">${escapeHtml(dadosContratada.nome)} — assinado eletronicamente em ${new Date(dadosContratada.assinatura.assinadoEm).toLocaleString('pt-BR')}</p>
+          </div>` : ''}
         </div>
-        <button class="btn btn-primary btn-block mt-4" id="btnLi">Li e entendi — prosseguir</button>
+        <button class="btn btn-secondary btn-block mt-4" id="btnLerPdf">Ler em PDF (somente leitura, não assinado)</button>
+        <button class="btn btn-primary btn-block mt-2" id="btnLi">Li e entendi — prosseguir</button>
       `;
+      document.getElementById('btnLerPdf').addEventListener('click', async () => {
+        const b = document.getElementById('btnLerPdf'); b.disabled = true; const t = b.textContent; b.textContent = 'Gerando PDF...';
+        try {
+          const blob = await gerarPdfPublico({ leitura: true });
+          if (!blob) alert('Não foi possível gerar o PDF agora.'); else abrirPdf(blob, 'contrato-leitura.pdf', false);
+        } catch { alert('Não foi possível gerar o PDF agora.'); }
+        b.disabled = false; b.textContent = t;
+      });
       document.getElementById('btnLi').addEventListener('click', () => renderConfirmacao(dadosPreenchidos));
     }
 
@@ -516,8 +562,18 @@
               <div style="font-size:32px; margin-bottom:12px;">✓</div>
               <p style="font-size:15px; font-weight:700;">Assinatura registrada com sucesso!</p>
               <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Agora é só aguardar os próximos passos da equipe Criativamente para a validação final do contrato.</p>
+              <button class="btn btn-primary btn-block mt-4" id="btnBaixarAssinado">Salvar contrato em PDF (versão assinada)</button>
+              <p class="text-muted mt-2" style="font-size:11.5px; line-height:1.5;">Guarde este arquivo. A versão oficial também fica registrada com a Criativamente.</p>
             </div>
           `;
+          document.getElementById('btnBaixarAssinado').addEventListener('click', async () => {
+            const b = document.getElementById('btnBaixarAssinado'); b.disabled = true; const t = b.textContent; b.textContent = 'Gerando PDF...';
+            try {
+              const blob = await gerarPdfPublico({ leitura: false, assinaturaCliente: imagemBase64 });
+              if (!blob) alert('Não foi possível gerar o PDF agora. Solicite a segunda via ao final do prazo.'); else abrirPdf(blob, 'contrato-assinado.pdf', true);
+            } catch { alert('Não foi possível gerar o PDF agora.'); }
+            b.disabled = false; b.textContent = t;
+          });
         } catch {
           alert('Não foi possível registrar a assinatura agora. Tente novamente.');
           btn.disabled = false; btn.textContent = 'Confirmar assinatura';

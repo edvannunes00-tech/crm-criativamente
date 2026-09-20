@@ -49,7 +49,8 @@ export async function carregarLogoDataUrl() {
   }
 }
 
-export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, contratadaAssinaturaDataUrl, logoDataUrl, clienteSnapshot, versao, assinatura }) {
+export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contratadaDocumento, contratadaEndereco, contratadaResponsavel, contratadaResponsavelCpf, contratadaResponsavelCargo, contratadaAssinaturaDataUrl, contratadaAssinadaEm, marcaDagua, logoDataUrl, clienteSnapshot, versao, assinatura }) {
+  const codigoContrato = String(contrato.codigo || (contrato.id || '').slice(0, 8)).toUpperCase();
   const clienteNomeCompleto = clienteSnapshot?.nome_completo || '—';
   const clienteCpfCnpj = clienteSnapshot?.cpf_cnpj || '—';
   const clienteEmpresaMarca = clienteSnapshot?.empresa_marca || null;
@@ -119,6 +120,22 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
         } catch { /* sem marca d'água */ }
       }
 
+      // marca d'água de leitura (contrato ainda NÃO assinado): diagonal, bem visível
+      if (marcaDagua && doc.GState) {
+        try {
+          doc.saveGraphicsState();
+          doc.setGState(new doc.GState({ opacity: 0.16 }));
+          doc.setTextColor(200, 40, 40);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(46);
+          doc.text(marcaDagua.linha1, larguraPagina / 2, alturaPagina / 2 - 18, { align: 'center', angle: 35 });
+          doc.setFontSize(24);
+          doc.text(marcaDagua.linha2, larguraPagina / 2 + 10, alturaPagina / 2 + 34, { align: 'center', angle: 35 });
+          doc.restoreGraphicsState();
+          doc.setTextColor(0);
+        } catch { /* sem marca d'água de leitura */ }
+      }
+
       // cabeçalho: logo + nome + filete verde
       if (logoDataUrl) {
         try { doc.addImage(logoDataUrl, 'PNG', margem, 32, 34, 33); } catch { /* sem logo */ }
@@ -133,7 +150,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(110);
-      doc.text(`Contrato nº ${contrato.id.slice(0, 8).toUpperCase()}`, larguraPagina - margem, 46, { align: 'right' });
+      doc.text(`Contrato nº ${codigoContrato}`, larguraPagina - margem, 46, { align: 'right' });
       doc.text(`Versão ${versao}`, larguraPagina - margem, 58, { align: 'right' });
       doc.setDrawColor(...VERDE);
       doc.setLineWidth(1.4);
@@ -159,7 +176,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(90);
-  doc.text(`Contrato nº ${contrato.id.slice(0, 8).toUpperCase()} — versão ${versao} — gerado em ${formatarData(new Date().toISOString())}`, margem, y);
+  doc.text(`Contrato nº ${codigoContrato} — versão ${versao} — gerado em ${formatarData(new Date().toISOString())}`, margem, y);
   doc.setTextColor(0);
   novaLinha(24);
 
@@ -255,7 +272,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   } else {
     doc.setFontSize(8);
     doc.setTextColor(90);
-    doc.text(`Assinado eletronicamente em ${formatarData(new Date().toISOString(), true)}`, margem, y);
+    doc.text(`Assinado eletronicamente em ${formatarData(contratadaAssinadaEm || new Date().toISOString(), true)}`, margem, y);
     doc.setTextColor(0);
     doc.setFontSize(10);
     novaLinha(14);
