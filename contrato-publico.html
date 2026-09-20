@@ -352,13 +352,15 @@
       }
 
       const v = st.valores || {};
+      const cheioAnual = Number(v.mensal) * 12;
+      const descontoAnual = cheioAnual > 0 && Number(v.anual) > 0 && Number(v.anual) < cheioAnual ? Math.round((1 - Number(v.anual) / cheioAnual) * 100) : 0;
       conteudo.innerHTML = `
         <div class="passo-label">${rotulo}</div>
         <div class="card">
           <p style="font-size:15px; font-weight:700; margin-bottom:6px;">Escolha como deseja contratar</p>
-          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">Manutenção e suporte. Sem período mínimo de fidelidade. O plano anual é apenas uma periodicidade de cobrança diferente.</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">Manutenção e suporte para o seu site.</p>
           <button class="btn btn-primary btn-block" id="btnMensal">${formatarMoeda(v.mensal)} / mês</button>
-          <button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano</button>
+          <button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano${descontoAnual ? ` · economize ${descontoAnual}%` : ''}</button>
           <p class="text-muted mt-4" style="font-size:11.5px; line-height:1.6;">O pagamento é feito no ambiente seguro do Mercado Pago. Nós não armazenamos os dados do seu cartão. A contratação só é concluída depois da confirmação do pagamento pelo Mercado Pago.</p>
         </div>`;
       document.getElementById('btnMensal').addEventListener('click', () => iniciarPagamento('mensal'));
