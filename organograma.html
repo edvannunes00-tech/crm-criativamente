@@ -10,6 +10,7 @@
     .org { display: flex; flex-direction: column; align-items: center; gap: 0; }
     .no-topo { border: 1px solid var(--accent); background: rgba(156,255,25,.08); border-radius: 14px; padding: 14px 22px; text-align: center; max-width: 420px; }
     .no-topo strong { font-size: 17px; }
+    .topo-com-foto { display: flex; align-items: center; gap: 14px; text-align: left; }
     .liga { width: 2px; height: 26px; background: var(--line-strong); }
     .barra { height: 2px; background: var(--line-strong); width: min(94%, 1100px); }
     .filhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; width: 100%; margin-top: 0; }
@@ -126,7 +127,7 @@
 
     const [hub, ...demais] = CHATS;
     document.getElementById('org').innerHTML = `
-      <div class="no-topo"><strong>Edvan Nunes</strong><div class="text-muted" style="font-size:12.5px; margin-top:2px;">Dono e decisor final: aprova contratos, preços, envios e acessos</div></div>
+      <div class="no-topo topo-com-foto"><span class="foto"><img src="/equipe/edvan.jpg" alt="Edvan Nunes" onerror="this.remove()" /><span class="ini">E</span></span><div><strong>Edvan Nunes</strong><div class="text-muted" style="font-size:12.5px; margin-top:2px;">Dono e decisor final: aprova contratos, preços, envios e acessos</div></div></div>
       <div class="liga"></div>
       <div style="width:100%; max-width:520px;">${card(hub)}</div>
       <div class="liga"></div>
