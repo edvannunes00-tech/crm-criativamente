@@ -9,6 +9,12 @@
   <style>
     .item-linha { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
     .item-linha:last-child { border-bottom: none; }
+    @media (max-width: 720px) {
+      .item-linha { display: grid !important; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+      .item-linha > div { flex: none !important; min-width: 0; }
+      .item-linha > div:first-child { grid-column: 1 / -1; font-weight: 700; }
+      .item-linha .btn-icone { grid-column: 1 / -1; justify-self: end; }
+    }
     .resumo-linha { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px; border-bottom: 1px solid var(--line); }
     .resumo-linha:last-child { border-bottom: none; font-weight: 800; font-size: 15px; }
     .link-token-box { background: var(--near-black); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px; font-family: var(--font-mono); font-size: 12px; word-break: break-all; margin: 10px 0; }
@@ -105,7 +111,7 @@
 
       document.getElementById('cabecalho').innerHTML = `
         <div class="card" style="margin-bottom:24px;">
-          <div class="flex items-center justify-between mb-4">
+          <div class="cab-linha mb-4">
             <div>
               <div style="font-size:20px; font-weight:800;">${escapeHtml(data.titulo)}</div>
               <div class="text-muted mt-1" style="font-size:13px;">
@@ -114,7 +120,7 @@
                 ${data.projeto_id ? ` &nbsp;·&nbsp; <a href="/ficha-projeto.html?id=${data.projeto_id}" style="color:var(--white); text-decoration:underline;">Ver projeto</a>` : ''}
               </div>
             </div>
-            <div class="flex gap-2 items-center">
+            <div class="cab-acoes">
               <span class="badge ${STATUS_BADGE[data.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[data.status] || data.status}</span>
               ${podeRegistrarEnvio ? `<button class="btn btn-secondary btn-sm" id="btnRegistrarEnvio">Registrar envio</button>` : ''}
               ${podeCancelar ? `<button class="btn btn-secondary btn-sm" id="btnCancelar" style="color:var(--status-erro);">Cancelar contrato</button>` : ''}

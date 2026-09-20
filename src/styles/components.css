@@ -293,3 +293,31 @@ table.data-table { width: 100%; border-collapse: collapse; }
 .mb-4 { margin-bottom: var(--space-4); }
 .text-muted { color: var(--gray-2); }
 .hidden { display: none !important; }
+
+
+/* -------------------- MOBILE (todo o CRM) -------------------- */
+.cab-linha { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cab-linha > div:first-child { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.cab-acoes { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  .page-content { padding: 12px 12px 88px; }
+  .header { height: auto; min-height: var(--header-height); padding: 10px 12px; }
+  .header-title { font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+  .header-breadcrumb { font-size: 10.5px; }
+  .card { padding: 14px; }
+  .tabs { overflow-x: auto; flex-wrap: nowrap; gap: 18px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex: none; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data-table { min-width: 560px; }
+  .filter-bar { flex-wrap: wrap; }
+  input, select, textarea { font-size: 16px; }
+  .indicator-grid { grid-template-columns: 1fr 1fr; }
+  .indicator-card { padding: 12px; }
+  .indicator-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .indicator-card .value { font-size: 20px; }
+  .cab-acoes { width: 100%; }
+  .cab-acoes .btn { flex: 1 1 auto; }
+  .link-token-box { word-break: break-all; }
+}
