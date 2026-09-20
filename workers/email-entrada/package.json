@@ -1,0 +1,9 @@
+{
+  "name": "criativamente-email-entrada",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy" },
+  "dependencies": { "postal-mime": "^3.0.0" },
+  "devDependencies": { "wrangler": "^4.37.1" }
+}

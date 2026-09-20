@@ -37,7 +37,7 @@ function escapeHtml(v: string): string {
 function textoParaHtml(msg: string): string {
   return msg.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
 }
-function templateAviso(preheader: string, titulo: string, corpoHtml: string): string {
+function templateAviso(preheader: string, titulo: string, corpoHtml: string, cta?: { label: string; url: string }): string {
   return `<!doctype html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Criativamente</title></head>
@@ -51,6 +51,8 @@ function templateAviso(preheader: string, titulo: string, corpoHtml: string): st
     <div style="background:${CARD_BG}; border:1px solid ${LINE}; border-radius:16px; padding:36px 32px;">
       <h1 style="margin:0 0 16px; font-size:22px; line-height:1.3; color:${CARD_INK};">${escapeHtml(titulo)}</h1>
       <div style="font-size:15px; line-height:1.6; color:${CARD_INK};">${corpoHtml}</div>
+      ${cta ? `<div style="text-align:center; margin:28px 0 8px;"><a href="${escapeHtml(cta.url)}" style="display:inline-block; background-color:${ACCENT}; color:#0A1400; text-decoration:none; font-weight:700; font-size:15px; padding:14px 28px; border-radius:8px;"><span style="color:#0A1400;">${escapeHtml(cta.label)}</span></a></div>
+      <p style="font-size:12px; color:#6B7280; margin-top:20px; word-break:break-all;">Se o botão não funcionar, copie e cole este link no navegador:<br><a href="${escapeHtml(cta.url)}" style="color:#6B7280;">${escapeHtml(cta.url)}</a></p>` : ''}
     </div>
     <div style="text-align:center; padding-top:24px;">
       <p style="font-size:13px; color:${MUTED_ON_DARK}; margin:0;">Criativamente</p>
@@ -81,7 +83,7 @@ Deno.serve(async (req: Request) => {
     if (!apiKey || !from) return json({ ok: false, motivo: "email_nao_configurado" }, 503);
 
     const jwt = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
-    let body: { acao?: string; email_id?: string; mensagem?: string; para?: string[]; assunto?: string };
+    let body: { acao?: string; email_id?: string; mensagem?: string; para?: string[]; assunto?: string; cta_label?: string; cta_url?: string; contato_id?: string };
     try { body = await req.json(); } catch { return json({ error: "Corpo invalido" }, 400); }
 
     const supabaseUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
@@ -152,7 +154,29 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, enviados, falhas });
     }
 
-    return json({ error: "acao deve ser 'responder' ou 'novo'" }, 400);
+    if (body.acao === "cta") {
+      const destino = Array.isArray(body.para) ? String(body.para[0] ?? "").trim().toLowerCase() : "";
+      const assunto = typeof body.assunto === "string" ? body.assunto.trim() : "";
+      const label = typeof body.cta_label === "string" ? body.cta_label.trim() : "";
+      const url = typeof body.cta_url === "string" ? body.cta_url.trim() : "";
+      if (!EMAIL_RE.test(destino)) return json({ error: "destinatario invalido" }, 422);
+      if (!assunto || assunto.length > 200 || !label || label.length > 60) return json({ error: "assunto/rotulo invalido" }, 422);
+      // O botao so pode apontar para o proprio site (evita usar o envio para levar a links de terceiros).
+      if (!url.startsWith(`${SITE_URL}/`)) return json({ error: "cta_url invalida" }, 422);
+
+      const { data: vinculos } = await db.from("empresa_usuarios").select("empresa_id").eq("usuario_id", userId).eq("ativo", true);
+      let empresaId: string | null = null;
+      for (const v of vinculos ?? []) { if (await podeCriar(v.empresa_id)) { empresaId = v.empresa_id; break; } }
+      if (!empresaId) return json({ error: "Sem permissao." }, 403);
+
+      let idProvedor: string | null;
+      try { idProvedor = await enviarResend(apiKey, from, destino, assunto, templateAviso(assunto, assunto, textoParaHtml(mensagem), { label, url })); }
+      catch { return json({ ok: false, motivo: "falha_no_envio" }, 502); }
+      await gravar({ empresa_id: empresaId, contato_id: body.contato_id ?? await contatoPorEmail(empresaId, destino), to_email: destino, subject: assunto, body_text: `${mensagem}\n\n[Botão: ${label}]`, provider_message_id: idProvedor });
+      return json({ ok: true });
+    }
+
+    return json({ error: "acao deve ser 'responder', 'novo' ou 'cta'" }, 400);
   } catch (_e) {
     return json({ ok: false, motivo: "erro_interno" }, 500);
   }

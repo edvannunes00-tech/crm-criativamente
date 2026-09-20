@@ -1,0 +1,8 @@
+name = "criativamente-email-entrada"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+FUNCTION_URL = "https://wdhioclskicixdhkolce.supabase.co/functions/v1/email-entrada"
+FORWARD_TO = "edvannunes00@gmail.com"
+# Segredo (nao versionado): EMAIL_ENTRADA_SECRET, via `wrangler secret put`.

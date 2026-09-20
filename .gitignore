@@ -1,2 +1,4 @@
 
 supabase/.temp/
+workers/*/node_modules/
+workers/*/.wrangler/
