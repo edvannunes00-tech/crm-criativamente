@@ -7,24 +7,75 @@
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/components.css" />
   <style>
-    .mail-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
-    @media (max-width: 900px) { .mail-layout { grid-template-columns: 1fr; } }
-    .mail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-    .mail-item { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--near-black); }
-    .mail-item.is-unread { background: rgba(156, 255, 25, 0.08); border-color: var(--accent); }
-    .mail-item.is-selected { outline: 1px solid var(--accent); }
-    .mail-item-main { flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 0; font: inherit; }
-    .mail-from { font-weight: 800; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mail-subject { font-size: 13px; color: var(--gray-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mail-meta { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); }
-    .mail-badge { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 800; margin-left: 8px; }
-    .bolha { max-width: 92%; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
-    .bolha.in { background: var(--near-black); border: 1px solid var(--line-strong); align-self: flex-start; }
-    .bolha.out { background: rgba(156, 255, 25, 0.12); border: 1px solid var(--accent); align-self: flex-end; }
-    .bolha-meta { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); margin-bottom: 4px; }
-    .thread { display: flex; flex-direction: column; gap: 10px; }
-    .bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-    textarea { width: 100%; min-height: 110px; }
+    .mail-app { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 860px) { .mail-app { grid-template-columns: 1fr; } }
+
+    .mail-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
+    @media (max-width: 860px) { .mail-nav { flex-direction: row; flex-wrap: wrap; position: static; } }
+    .compose-btn { display: flex; align-items: center; gap: 10px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 16px; padding: 14px 20px; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+    .compose-btn:hover { filter: brightness(1.06); }
+    .nav-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; background: none; border: 0; color: var(--gray-2); font: inherit; font-size: 13.5px; padding: 9px 14px; border-radius: 999px; cursor: pointer; text-align: left; }
+    .nav-item:hover { background: rgba(255,255,255,.05); color: var(--white); }
+    .nav-item.ativo { background: rgba(156,255,25,.14); color: var(--white); font-weight: 800; }
+    .nav-item .n { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+
+    .mail-panel { background: var(--near-black); border: 1px solid var(--line-strong); border-radius: 16px; overflow: hidden; min-height: 420px; }
+    .toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line-strong); flex-wrap: wrap; }
+    .ibtn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; background: none; border: 0; color: var(--gray-2); cursor: pointer; }
+    .ibtn:hover { background: rgba(255,255,255,.08); color: var(--white); }
+    .ibtn:disabled { opacity: .35; cursor: default; }
+    .ibtn svg { width: 18px; height: 18px; }
+    .busca { flex: 1; min-width: 160px; max-width: 420px; margin-left: auto; background: rgba(255,255,255,.06); border: 1px solid transparent; border-radius: 999px; padding: 8px 16px; color: var(--white); font: inherit; font-size: 13px; }
+    .busca:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,.09); }
+    .sel-info { font-size: 12px; color: var(--gray-2); margin-left: 6px; }
+
+    .linha { display: grid; grid-template-columns: 34px minmax(120px, 190px) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 0 14px 0 10px; height: 46px; border-bottom: 1px solid rgba(255,255,255,.06); cursor: pointer; font-size: 13.5px; }
+    .linha:hover { background: rgba(255,255,255,.04); }
+    .linha.nao-lida { background: rgba(156,255,25,.06); }
+    .linha.nao-lida .de, .linha.nao-lida .assunto { font-weight: 800; color: var(--white); }
+    .linha .de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gray-2); }
+    .linha .meio { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--gray-2); }
+    .linha .assunto { color: var(--white); }
+    .linha .data { font-family: var(--font-mono); font-size: 11.5px; color: var(--gray-2); white-space: nowrap; }
+    .linha.nao-lida .data { color: var(--white); font-weight: 800; }
+    .linha .qtd { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); margin-left: 6px; }
+    @media (max-width: 640px) { .linha { grid-template-columns: 30px minmax(0, 1fr) auto; height: auto; padding: 10px; } .linha .de { grid-column: 2; font-weight: 800; } .linha .meio { grid-column: 2; grid-row: 2; } .linha .data { grid-column: 3; grid-row: 1; } }
+
+    .vazio { padding: 60px 20px; text-align: center; color: var(--gray-2); font-size: 14px; }
+
+    .conversa-topo { display: flex; align-items: center; gap: 8px; padding: 14px 18px 4px; }
+    .conversa-titulo { font-size: 20px; font-weight: 800; line-height: 1.3; padding: 4px 18px 10px; }
+    .msg { padding: 16px 18px; border-top: 1px solid rgba(255,255,255,.07); }
+    .msg-cab { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+    .avatar { flex: none; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: #0A0A0A; }
+    .msg-quem { font-weight: 800; font-size: 13.5px; }
+    .msg-quem small { font-weight: 400; color: var(--gray-2); margin-left: 6px; }
+    .msg-data { margin-left: auto; font-family: var(--font-mono); font-size: 11.5px; color: var(--gray-2); }
+    .msg-corpo { margin-left: 50px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .msg.saida .msg-corpo { border-left: 2px solid var(--accent); padding-left: 12px; margin-left: 48px; }
+    .anexo { display: inline-flex; align-items: center; gap: 6px; margin: 10px 8px 0 0; padding: 6px 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: none; color: var(--white); font: inherit; font-size: 12.5px; cursor: pointer; }
+    .anexo:hover { border-color: var(--accent); }
+    .responder { padding: 16px 18px 20px 68px; }
+    .responder-btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line-strong); background: none; color: var(--white); border-radius: 999px; padding: 9px 22px; font: inherit; font-size: 13.5px; cursor: pointer; }
+    .responder-btn:hover { border-color: var(--accent); }
+    .editor { background: rgba(255,255,255,.04); border: 1px solid var(--line-strong); border-radius: 14px; padding: 12px; }
+    .editor textarea, .janela textarea { width: 100%; min-height: 120px; background: transparent; border: 0; color: var(--white); font: inherit; font-size: 14px; line-height: 1.6; resize: vertical; }
+    .editor textarea:focus, .janela textarea:focus { outline: none; }
+    .erro { color: var(--status-erro); font-size: 12.5px; margin: 6px 0 0; }
+    .btn-enviar { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px; padding: 9px 26px; font: inherit; font-weight: 800; font-size: 13.5px; cursor: pointer; }
+    .btn-enviar:disabled { opacity: .5; cursor: default; }
+    .btn-link { background: none; border: 0; color: var(--gray-2); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+    .janela { position: fixed; right: 24px; bottom: 0; width: min(440px, calc(100vw - 24px)); background: var(--near-black); border: 1px solid var(--line-strong); border-bottom: 0; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 30px rgba(0,0,0,.6); z-index: 60; }
+    .janela-cab { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #1b1b1a; border-radius: 14px 14px 0 0; font-weight: 800; font-size: 13.5px; cursor: pointer; }
+    .janela-corpo { padding: 4px 14px 14px; }
+    .janela.min .janela-corpo { display: none; }
+    .campo { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.08); padding: 6px 0; }
+    .campo label { font-size: 12.5px; color: var(--gray-2); min-width: 54px; }
+    .campo input { flex: 1; background: transparent; border: 0; color: var(--white); font: inherit; font-size: 13.5px; padding: 4px 0; }
+    .campo input:focus { outline: none; }
+    .janela .rodape { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+    .aviso-multi { font-size: 11.5px; color: var(--gray-2); margin: 6px 0 0; }
   </style>
 </head>
 <body>
@@ -33,29 +84,33 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <p class="text-muted" style="font-size:12.5px; line-height:1.6; margin-bottom:12px;" id="dica"></p>
+        <div class="mail-app">
+          <aside class="mail-nav" id="nav">
+            <button class="compose-btn" id="btnEscrever" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Escrever</button>
+            <button class="nav-item ativo" data-pasta="entrada"><span>Caixa de entrada</span><span class="n" id="nEntrada"></span></button>
+            <button class="nav-item" data-pasta="enviados"><span>Enviados</span></button>
+            <button class="nav-item" data-pasta="arquivadas"><span>Arquivadas</span></button>
+            <button class="nav-item" data-pasta="lixeira"><span>Lixeira</span></button>
+          </aside>
 
-        <div class="filter-bar">
-          <button class="btn btn-primary btn-sm" id="btnEscrever">Escrever e-mail</button>
-          <div class="tabs" id="abas" style="border-bottom:none; margin-bottom:0;">
-            <button class="tab active" data-aba="entrada">Caixa de entrada</button>
-            <button class="tab" data-aba="arquivadas">Arquivadas</button>
-            <button class="tab" data-aba="lixeira">Lixeira</button>
-          </div>
+          <section class="mail-panel">
+            <div class="toolbar" id="toolbar"></div>
+            <div id="corpo"><div class="vazio">Carregando…</div></div>
+          </section>
         </div>
-
-        <form class="card mb-4 hidden" id="formEscrever">
-          <label class="check-linha"><input type="checkbox" id="eOculto" /><span style="font-size:13px;">Vários destinatários (cada um recebe a mensagem só para si, ninguém vê os outros)</span></label>
-          <div class="field mt-2" id="campoPara1"><label class="mono-label">Para</label><input type="email" id="ePara" placeholder="cliente@email.com" /></div>
-          <div class="field mt-2 hidden" id="campoParaN"><label class="mono-label">Destinatários (um por linha)</label><textarea id="eParaLista" style="min-height:90px;"></textarea></div>
-          <div class="field"><label class="mono-label">Assunto</label><input type="text" id="eAssunto" maxlength="200" /></div>
-          <div class="field"><label class="mono-label">Mensagem</label><textarea id="eMensagem" maxlength="5000"></textarea></div>
-          <p class="text-muted" id="eResultado" style="font-size:12.5px;"></p>
-          <button type="submit" class="btn btn-primary" id="btnEnviarNovo">Enviar e-mail</button>
-        </form>
-
-        <div id="area"><div class="skeleton skeleton-row"></div></div>
       </div>
+    </div>
+  </div>
+
+  <div class="janela hidden" id="janela">
+    <div class="janela-cab" id="janelaCab"><span>Nova mensagem</span><span><button class="ibtn" id="jMin" type="button" aria-label="Minimizar" style="width:26px;height:26px;">–</button><button class="ibtn" id="jFechar" type="button" aria-label="Fechar" style="width:26px;height:26px;">✕</button></span></div>
+    <div class="janela-corpo">
+      <div class="campo"><label for="jPara">Para</label><input type="text" id="jPara" placeholder="cliente@email.com (vários: separe por vírgula)" autocomplete="off" /></div>
+      <div class="campo"><label for="jAssunto">Assunto</label><input type="text" id="jAssunto" maxlength="200" /></div>
+      <textarea id="jMensagem" maxlength="5000" placeholder="Escreva sua mensagem…"></textarea>
+      <p class="aviso-multi hidden" id="jAviso">Cada destinatário recebe uma cópia só para ele: ninguém vê os outros endereços.</p>
+      <p class="erro" id="jErro"></p>
+      <div class="rodape"><button class="btn-enviar" id="jEnviar" type="button">Enviar</button><span class="text-muted" id="jResultado" style="font-size:12.5px;"></span></div>
     </div>
   </div>
 
@@ -63,31 +118,48 @@
     import { supabase } from '/src/lib/supabaseClient.js';
     import { handleQueryError, podeFazer } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    import { formatarData, escapeHtml } from '/src/lib/format.js';
+    import { escapeHtml } from '/src/lib/format.js';
     import { chamarFunction } from '/src/lib/contratoLinks.js';
 
     const { perm } = await initPage({ paginaAtual: 'caixa-entrada.html', breadcrumb: 'CRM / E-mail', title: 'E-mail' });
     const podeCriar = podeFazer(perm, 'email', 'criar');
     const podeEditar = podeFazer(perm, 'email', 'editar');
     const podeExcluir = podeFazer(perm, 'email', 'excluir');
-    const CONTATO = 'contato@criativamentedigital.com.br';
-    document.getElementById('dica').textContent = `Mensagens recebidas e enviadas por ${CONTATO}. É um complemento: toda mensagem recebida também continua chegando no seu e-mail pessoal.`;
     if (!podeCriar) document.getElementById('btnEscrever').classList.add('hidden');
 
-    let mensagens = [];
-    let aba = 'entrada';
-    let selecionada = null;
-    let marcadas = new Set();
-
+    const IC = {
+      arquivar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>',
+      lixeira: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>',
+      lida: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+      atualizar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg>',
+      voltar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+      restaurar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>',
+      clipe: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 11-9 9a5 5 0 0 1-7-7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1-3-3l8-8"/></svg>',
+    };
+    const CORES = ['#9CFF19', '#7DD3FC', '#FCA5A5', '#FCD34D', '#C4B5FD', '#86EFAC', '#F9A8D4'];
+    const cor = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CORES[h % CORES.length]; };
     const semRe = (s) => { let v = (s || '').trim(); while (/^re:\s*/i.test(v)) v = v.replace(/^re:\s*/i, '').trim(); return v || '(sem assunto)'; };
-    const contraparte = (m) => (m.direction === 'inbound' ? m.from_email : m.to_email) || 'desconhecido';
     const bytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+    function dataCurta(iso) {
+      const d = new Date(iso); const h = new Date();
+      if (d.toDateString() === h.toDateString()) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      if (d.getFullYear() === h.getFullYear()) return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+      return d.toLocaleDateString('pt-BR');
+    }
+    const dataLonga = (iso) => new Date(iso).toLocaleString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    let mensagens = [];
+    let pasta = 'entrada';
+    let aberta = null;
+    let marcadas = new Set();
+    let termo = '';
+    let respondendo = false;
 
     async function carregar() {
       const { data, error } = await supabase.from('emails')
         .select('id, contato_id, direction, from_email, from_name, to_email, subject, body_text, is_read, replied_at, archived_at, deleted_at, anexos, received_at')
-        .order('received_at', { ascending: false }).limit(400);
-      if (error) { await handleQueryError(error); document.getElementById('area').innerHTML = '<div class="error-state"><p>Não foi possível carregar agora.</p></div>'; return; }
+        .order('received_at', { ascending: false }).limit(500);
+      if (error) { await handleQueryError(error); document.getElementById('corpo').innerHTML = '<div class="vazio">Não foi possível carregar agora.</div>'; return; }
       mensagens = data || [];
       desenhar();
     }
@@ -95,13 +167,13 @@
     function conversas() {
       const mapa = new Map();
       for (const m of mensagens) {
-        const cp = contraparte(m); const ass = semRe(m.subject); const chave = `${cp}::${ass}`;
+        const cp = (m.direction === 'inbound' ? m.from_email : m.to_email) || 'desconhecido';
+        const ass = semRe(m.subject); const chave = `${cp}::${ass}`;
         let t = mapa.get(chave);
-        if (!t) { t = { chave, cp, nome: null, assunto: ass, msgs: [], ultima: m.received_at, naoLida: false, arquivada: true, lixeira: true }; mapa.set(chave, t); }
+        if (!t) { t = { chave, cp, nome: null, assunto: ass, msgs: [], ultima: m.received_at, naoLida: false, arquivada: true, lixeira: true, temEntrada: false, temSaida: false }; mapa.set(chave, t); }
         t.msgs.push(m);
-        if (m.direction === 'inbound' && m.from_name) t.nome = m.from_name;
+        if (m.direction === 'inbound') { t.temEntrada = true; if (m.from_name) t.nome = m.from_name; if (!m.is_read) t.naoLida = true; } else t.temSaida = true;
         if (m.received_at > t.ultima) t.ultima = m.received_at;
-        if (m.direction === 'inbound' && !m.is_read) t.naoLida = true;
         if (!m.archived_at) t.arquivada = false;
         if (!m.deleted_at) t.lixeira = false;
       }
@@ -110,18 +182,30 @@
       return lista.sort((a, b) => b.ultima.localeCompare(a.ultima));
     }
 
-    function daAba(t) {
-      if (aba === 'lixeira') return t.lixeira;
-      if (aba === 'arquivadas') return t.arquivada && !t.lixeira;
-      return !t.arquivada && !t.lixeira;
+    function daPasta(t) {
+      if (pasta === 'lixeira') return t.lixeira;
+      if (t.lixeira) return false;
+      if (pasta === 'arquivadas') return t.arquivada;
+      if (t.arquivada) return false;
+      if (pasta === 'enviados') return t.temSaida;
+      return t.temEntrada;
     }
+    const passaBusca = (t) => !termo || `${t.nome || ''} ${t.cp} ${t.assunto} ${t.msgs.map((m) => m.body_text).join(' ')}`.toLowerCase().includes(termo);
 
     async function aplicar(threads, campo, valor) {
       const ids = threads.flatMap((t) => t.msgs.map((m) => m.id));
       if (!ids.length) return;
       const { error } = await supabase.from('emails').update({ [campo]: valor }).in('id', ids);
       if (error) { alert('Não foi possível concluir: ' + error.message); return; }
-      marcadas.clear(); selecionada = null;
+      marcadas.clear(); aberta = null; respondendo = false;
+      await carregar();
+    }
+    async function marcarLida(threads, lida) {
+      const ids = threads.flatMap((t) => t.msgs.filter((m) => m.direction === 'inbound').map((m) => m.id));
+      if (!ids.length) return;
+      const { error } = await supabase.from('emails').update({ is_read: lida }).in('id', ids);
+      if (error) { alert('Não foi possível concluir: ' + error.message); return; }
+      marcadas.clear();
       await carregar();
     }
     async function excluirDef(threads) {
@@ -129,159 +213,183 @@
       const ids = threads.flatMap((t) => t.msgs.map((m) => m.id));
       const { error } = await supabase.from('emails').delete().in('id', ids);
       if (error) { alert('Não foi possível excluir: ' + error.message); return; }
-      marcadas.clear(); selecionada = null;
+      marcadas.clear(); aberta = null;
       await carregar();
     }
 
-    function desenhar() {
-      const todas = conversas();
-      const naoLidas = todas.filter((t) => !t.arquivada && !t.lixeira && t.naoLida).length;
-      const visiveis = todas.filter(daAba);
-      const area = document.getElementById('area');
-      const badge = naoLidas > 0 ? `<span class="mail-badge">${naoLidas}</span>` : '';
-      document.querySelector('[data-aba="entrada"]').innerHTML = `Caixa de entrada${badge}`;
-
-      if (!visiveis.length) {
-        area.innerHTML = `<div class="empty-state"><p>${aba === 'lixeira' ? 'Lixeira vazia.' : aba === 'arquivadas' ? 'Nenhuma conversa arquivada.' : 'Nenhuma mensagem ainda.'}</p></div>`;
-        return;
+    function botoesAcao(alvo) {
+      const b = [];
+      if (pasta === 'lixeira') {
+        if (podeEditar) b.push(`<button class="ibtn" data-acao="restaurar" title="Restaurar">${IC.restaurar}</button>`);
+        if (podeExcluir) b.push(`<button class="ibtn" data-acao="excluir" title="Excluir definitivamente" style="color:var(--status-erro);">${IC.lixeira}</button>`);
+      } else {
+        if (podeEditar) b.push(pasta === 'arquivadas' ? `<button class="ibtn" data-acao="desarquivar" title="Mover para a caixa de entrada">${IC.arquivar}</button>` : `<button class="ibtn" data-acao="arquivar" title="Arquivar">${IC.arquivar}</button>`);
+        if (podeExcluir) b.push(`<button class="ibtn" data-acao="lixeira" title="Mover para a lixeira">${IC.lixeira}</button>`);
+        if (podeEditar) b.push(`<button class="ibtn" data-acao="nao-lida" title="Marcar como não lida">${IC.lida}</button>`);
       }
-      const sel = visiveis.find((t) => t.chave === selecionada) || null;
-      const acoesLote = (podeEditar || podeExcluir) && marcadas.size > 0 ? `
-        <div class="bulk">
-          <span class="text-muted" style="font-size:12px;">${marcadas.size} selecionada(s)</span>
-          ${aba === 'entrada' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="arquivar">Arquivar</button>' : ''}
-          ${aba === 'arquivadas' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="desarquivar">Desarquivar</button>' : ''}
-          ${aba !== 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-lote="lixeira">Mover para a lixeira</button>' : ''}
-          ${aba === 'lixeira' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="restaurar">Restaurar</button>' : ''}
-          ${aba === 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-lote="excluir" style="color:var(--status-erro);">Excluir definitivamente</button>' : ''}
-        </div>` : '';
-
-      area.innerHTML = `
-        <div class="mail-layout">
-          <div>
-            ${acoesLote}
-            <ul class="mail-list">
-              ${visiveis.map((t) => `
-                <li><div class="mail-item ${t.naoLida ? 'is-unread' : ''} ${t.chave === selecionada ? 'is-selected' : ''}">
-                  <input type="checkbox" data-marca="${escapeHtml(t.chave)}" ${marcadas.has(t.chave) ? 'checked' : ''} aria-label="Selecionar conversa" />
-                  <button class="mail-item-main" data-abrir="${escapeHtml(t.chave)}">
-                    <span class="mail-from">${escapeHtml(t.nome || t.cp)}</span>
-                    <span class="mail-subject">${escapeHtml(t.assunto)}</span>
-                    <span class="mail-meta">${formatarData(t.ultima, true)}${t.msgs.length > 1 ? ` · ${t.msgs.length} mensagens` : ''}</span>
-                  </button>
-                </div></li>`).join('')}
-            </ul>
-          </div>
-          <div class="card" id="detalhe">${sel ? detalhe(sel) : '<p class="text-muted">Selecione uma conversa para ler.</p>'}</div>
-        </div>`;
-
-      area.querySelectorAll('[data-marca]').forEach((el) => el.addEventListener('change', () => { el.checked ? marcadas.add(el.dataset.marca) : marcadas.delete(el.dataset.marca); desenhar(); }));
-      area.querySelectorAll('[data-abrir]').forEach((el) => el.addEventListener('click', () => abrirConversa(el.dataset.abrir)));
-      area.querySelectorAll('[data-lote]').forEach((el) => el.addEventListener('click', () => {
-        const alvo = todas.filter((t) => marcadas.has(t.chave));
-        acaoLote(el.dataset.lote, alvo);
-      }));
-      ligarDetalhe(sel);
+      return b.join('');
     }
-
-    function acaoLote(acao, alvo) {
+    function executar(acao, alvo) {
       if (acao === 'arquivar') return aplicar(alvo, 'archived_at', new Date().toISOString());
       if (acao === 'desarquivar') return aplicar(alvo, 'archived_at', null);
       if (acao === 'lixeira') return aplicar(alvo, 'deleted_at', new Date().toISOString());
       if (acao === 'restaurar') return aplicar(alvo, 'deleted_at', null);
       if (acao === 'excluir') return excluirDef(alvo);
+      if (acao === 'nao-lida') return marcarLida(alvo, false);
     }
 
-    function detalhe(t) {
-      const bolhas = t.msgs.map((m) => `
-        <div class="bolha ${m.direction === 'inbound' ? 'in' : 'out'}">
-          <div class="bolha-meta">${m.direction === 'inbound' ? escapeHtml(m.from_name || m.from_email) : 'Você (Criativamente)'} · ${formatarData(m.received_at, true)}</div>
-          ${escapeHtml(m.body_text)}
-          ${(m.anexos || []).map((a, i) => `<div style="margin-top:6px;"><button class="btn-ghost" data-anexo="${m.id}" data-indice="${i}" style="font-size:12px; text-decoration:underline;">📎 ${escapeHtml(a.filename)} (${bytes(a.size)})</button></div>`).join('')}
-        </div>`).join('');
-      const acoes = `
-        <div class="flex gap-2 mb-2" style="flex-wrap:wrap;">
-          ${aba === 'entrada' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="arquivar">Arquivar</button>' : ''}
-          ${aba === 'arquivadas' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="desarquivar">Desarquivar</button>' : ''}
-          ${aba !== 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-uni="lixeira">Mover para a lixeira</button>' : ''}
-          ${aba === 'lixeira' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="restaurar">Restaurar</button>' : ''}
-          ${aba === 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-uni="excluir" style="color:var(--status-erro);">Excluir definitivamente</button>' : ''}
+    function desenhar() {
+      const todas = conversas();
+      const naoLidas = todas.filter((t) => !t.arquivada && !t.lixeira && t.temEntrada && t.naoLida).length;
+      document.getElementById('nEntrada').textContent = naoLidas > 0 ? naoLidas : '';
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('ativo', n.dataset.pasta === pasta));
+
+      const sel = aberta ? todas.find((t) => t.chave === aberta) : null;
+      if (sel) { desenharConversa(sel); return; }
+
+      const visiveis = todas.filter(daPasta).filter(passaBusca);
+      const alvoLote = todas.filter((t) => marcadas.has(t.chave));
+      const tb = document.getElementById('toolbar');
+      tb.innerHTML = `
+        <input type="checkbox" id="selTodas" aria-label="Selecionar todas" style="margin:0 8px;" ${visiveis.length && visiveis.every((t) => marcadas.has(t.chave)) ? 'checked' : ''} />
+        <button class="ibtn" id="btnAtualizar" title="Atualizar">${IC.atualizar}</button>
+        ${marcadas.size ? `${botoesAcao(alvoLote)}<span class="sel-info">${marcadas.size} selecionada(s)</span>` : ''}
+        <input type="search" class="busca" id="busca" placeholder="Pesquisar e-mails" value="${escapeHtml(termo)}" />`;
+      tb.querySelector('#selTodas').addEventListener('change', (e) => { visiveis.forEach((t) => (e.target.checked ? marcadas.add(t.chave) : marcadas.delete(t.chave))); desenhar(); });
+      tb.querySelector('#btnAtualizar').addEventListener('click', carregar);
+      tb.querySelectorAll('[data-acao]').forEach((b) => b.addEventListener('click', () => executar(b.dataset.acao, alvoLote)));
+      const busca = tb.querySelector('#busca');
+      busca.addEventListener('input', () => { termo = busca.value.trim().toLowerCase(); pintarLista(); });
+      pintarLista();
+    }
+
+    function pintarLista() {
+      const todas = conversas();
+      const visiveis = todas.filter(daPasta).filter(passaBusca);
+      const corpo = document.getElementById('corpo');
+      if (!visiveis.length) {
+        corpo.innerHTML = `<div class="vazio">${termo ? 'Nenhum resultado para a pesquisa.' : pasta === 'lixeira' ? 'A lixeira está vazia.' : pasta === 'arquivadas' ? 'Nenhuma conversa arquivada.' : pasta === 'enviados' ? 'Você ainda não enviou e-mails.' : 'Nenhuma mensagem por aqui ainda.'}</div>`;
+        return;
+      }
+      corpo.innerHTML = visiveis.map((t) => {
+        const ultimaMsg = t.msgs[t.msgs.length - 1];
+        const trecho = (ultimaMsg.body_text || '').replace(/\s+/g, ' ').slice(0, 110);
+        const quem = pasta === 'enviados' ? `Para: ${t.nome || t.cp}` : (t.nome || t.cp);
+        const naoLida = pasta !== 'enviados' && t.naoLida;
+        return `<div class="linha ${naoLida ? 'nao-lida' : ''}" data-chave="${escapeHtml(t.chave)}">
+          <input type="checkbox" data-marca="${escapeHtml(t.chave)}" ${marcadas.has(t.chave) ? 'checked' : ''} aria-label="Selecionar conversa" />
+          <span class="de">${escapeHtml(quem)}${t.msgs.length > 1 ? `<span class="qtd">${t.msgs.length}</span>` : ''}</span>
+          <span class="meio"><span class="assunto">${escapeHtml(t.assunto)}</span> — ${escapeHtml(trecho)}</span>
+          <span class="data">${t.msgs.some((m) => (m.anexos || []).length) ? IC.clipe + ' ' : ''}${dataCurta(t.ultima)}</span>
         </div>`;
-      const responder = podeCriar && aba !== 'lixeira' ? `
-        <div class="mt-4">
-          <textarea id="rMensagem" maxlength="5000" placeholder="Escreva sua resposta…"></textarea>
-          <p class="text-muted" id="rErro" style="font-size:12.5px; color:var(--status-erro);"></p>
-          <button class="btn btn-primary mt-2" id="btnResponder">Enviar resposta</button>
-        </div>` : '';
-      return `<div class="mb-2"><div style="font-size:16px; font-weight:800;">${escapeHtml(t.assunto)}</div><div class="mail-meta">Com: ${escapeHtml(t.nome ? `${t.nome} <${t.cp}>` : t.cp)}</div></div>${acoes}<div class="thread">${bolhas}</div>${responder}`;
+      }).join('');
+      corpo.querySelectorAll('.linha').forEach((l) => l.addEventListener('click', (e) => {
+        if (e.target.closest('input')) return;
+        abrirConversa(l.dataset.chave);
+      }));
+      corpo.querySelectorAll('[data-marca]').forEach((c) => c.addEventListener('change', () => { c.checked ? marcadas.add(c.dataset.marca) : marcadas.delete(c.dataset.marca); desenhar(); }));
     }
 
     async function abrirConversa(chave) {
-      selecionada = chave;
+      aberta = chave; respondendo = false;
       const t = conversas().find((x) => x.chave === chave);
-      const naoLidas = t ? t.msgs.filter((m) => m.direction === 'inbound' && !m.is_read).map((m) => m.id) : [];
-      if (naoLidas.length && podeEditar) {
-        await supabase.from('emails').update({ is_read: true }).in('id', naoLidas);
-        mensagens = mensagens.map((m) => (naoLidas.includes(m.id) ? { ...m, is_read: true } : m));
+      const ids = t ? t.msgs.filter((m) => m.direction === 'inbound' && !m.is_read).map((m) => m.id) : [];
+      if (ids.length && podeEditar) {
+        await supabase.from('emails').update({ is_read: true }).in('id', ids);
+        mensagens = mensagens.map((m) => (ids.includes(m.id) ? { ...m, is_read: true } : m));
       }
       desenhar();
     }
 
-    function ligarDetalhe(sel) {
-      if (!sel) return;
-      document.querySelectorAll('[data-uni]').forEach((el) => el.addEventListener('click', () => acaoLote(el.dataset.uni, [sel])));
+    function desenharConversa(t) {
+      const alvo = [t];
+      document.getElementById('toolbar').innerHTML = `<button class="ibtn" id="btnVoltar" title="Voltar">${IC.voltar}</button>${botoesAcao(alvo)}`;
+      document.getElementById('btnVoltar').addEventListener('click', () => { aberta = null; respondendo = false; desenhar(); });
+      document.querySelectorAll('#toolbar [data-acao]').forEach((b) => b.addEventListener('click', () => executar(b.dataset.acao, alvo)));
+
+      const msgs = t.msgs.map((m) => {
+        const saida = m.direction === 'outbound';
+        const nome = saida ? 'Criativamente' : (m.from_name || m.from_email);
+        const email = saida ? `para ${m.to_email}` : `<${m.from_email}>`;
+        return `<div class="msg ${saida ? 'saida' : ''}">
+          <div class="msg-cab">
+            <div class="avatar" style="background:${cor(nome)};">${escapeHtml(nome.trim().charAt(0).toUpperCase() || '?')}</div>
+            <div class="msg-quem">${escapeHtml(nome)}<small>${escapeHtml(email)}</small></div>
+            <div class="msg-data">${dataLonga(m.received_at)}</div>
+          </div>
+          <div class="msg-corpo">${escapeHtml(m.body_text)}</div>
+          ${(m.anexos || []).length ? `<div style="margin-left:50px;">${m.anexos.map((a, i) => `<button class="anexo" data-anexo="${m.id}" data-indice="${i}">${IC.clipe}${escapeHtml(a.filename)} · ${bytes(a.size)}</button>`).join('')}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      const podeResponder = podeCriar && pasta !== 'lixeira';
+      document.getElementById('corpo').innerHTML = `
+        <div class="conversa-titulo">${escapeHtml(t.assunto)}</div>
+        ${msgs}
+        ${podeResponder ? `<div class="responder">${respondendo ? `
+          <div class="editor">
+            <textarea id="rMensagem" maxlength="5000" placeholder="Escreva sua resposta…" autofocus></textarea>
+            <p class="erro" id="rErro"></p>
+            <div style="display:flex; gap:12px; align-items:center; margin-top:6px;"><button class="btn-enviar" id="btnEnviarResp" type="button">Enviar</button><button class="btn-link" id="btnCancelarResp" type="button">Descartar</button></div>
+          </div>` : `<button class="responder-btn" id="btnResponder" type="button">${IC.voltar.replace('M19 12H5M12 19l-7-7 7-7', 'M9 14 4 9l5-5M20 20v-7a4 4 0 0 0-4-4H4')} Responder</button>`}</div>` : ''}`;
+
       document.querySelectorAll('[data-anexo]').forEach((el) => el.addEventListener('click', async () => {
         try { const r = await chamarFunction('email-anexo', { email_id: el.dataset.anexo, indice: Number(el.dataset.indice) }); window.open(r.url, '_blank'); }
         catch (e) { alert('Não foi possível abrir o anexo: ' + e.message); }
       }));
-      const btn = document.getElementById('btnResponder');
-      if (btn) btn.addEventListener('click', async () => {
+      const bR = document.getElementById('btnResponder');
+      if (bR) bR.addEventListener('click', () => { respondendo = true; desenharConversa(t); const ta = document.getElementById('rMensagem'); if (ta) ta.focus(); });
+      const bC = document.getElementById('btnCancelarResp');
+      if (bC) bC.addEventListener('click', () => { respondendo = false; desenharConversa(t); });
+      const bE = document.getElementById('btnEnviarResp');
+      if (bE) bE.addEventListener('click', async () => {
         const txt = document.getElementById('rMensagem').value.trim();
-        const erro = document.getElementById('rErro');
-        erro.textContent = '';
+        const erro = document.getElementById('rErro'); erro.textContent = '';
         if (!txt) { erro.textContent = 'Escreva a resposta antes de enviar.'; return; }
-        btn.disabled = true; btn.textContent = 'Enviando…';
-        const ultima = [...sel.msgs].reverse().find((m) => m.direction === 'inbound') || sel.msgs[sel.msgs.length - 1];
+        bE.disabled = true; bE.textContent = 'Enviando…';
+        const ultima = [...t.msgs].reverse().find((m) => m.direction === 'inbound') || t.msgs[t.msgs.length - 1];
         try {
           await chamarFunction('email-enviar', { acao: 'responder', email_id: ultima.id, mensagem: txt });
+          respondendo = false;
           await carregar();
         } catch (e) {
           erro.textContent = e.body && e.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : 'Não foi possível enviar agora. Tente novamente.';
-          btn.disabled = false; btn.textContent = 'Enviar resposta';
+          bE.disabled = false; bE.textContent = 'Enviar';
         }
       });
     }
 
-    document.getElementById('abas').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-aba]'); if (!b) return;
-      aba = b.dataset.aba; selecionada = null; marcadas.clear();
-      document.querySelectorAll('#abas .tab').forEach((t) => t.classList.toggle('active', t === b));
+    document.getElementById('nav').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pasta]'); if (!b) return;
+      pasta = b.dataset.pasta; aberta = null; respondendo = false; marcadas.clear(); termo = '';
       desenhar();
     });
-    document.getElementById('btnEscrever').addEventListener('click', () => document.getElementById('formEscrever').classList.toggle('hidden'));
-    document.getElementById('eOculto').addEventListener('change', (e) => {
-      document.getElementById('campoPara1').classList.toggle('hidden', e.target.checked);
-      document.getElementById('campoParaN').classList.toggle('hidden', !e.target.checked);
-    });
-    document.getElementById('formEscrever').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const res = document.getElementById('eResultado'); res.textContent = ''; res.style.color = '';
-      const multi = document.getElementById('eOculto').checked;
-      const para = multi ? document.getElementById('eParaLista').value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) : [document.getElementById('ePara').value.trim()].filter(Boolean);
-      const assunto = document.getElementById('eAssunto').value.trim();
-      const mensagem = document.getElementById('eMensagem').value.trim();
-      if (!para.length || !assunto || !mensagem) { res.style.color = 'var(--status-erro)'; res.textContent = 'Preencha destinatário, assunto e mensagem.'; return; }
-      const btn = document.getElementById('btnEnviarNovo'); btn.disabled = true; btn.textContent = 'Enviando…';
+
+    const janela = document.getElementById('janela');
+    const jPara = document.getElementById('jPara');
+    const destinatarios = () => [...new Set(jPara.value.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))];
+    jPara.addEventListener('input', () => document.getElementById('jAviso').classList.toggle('hidden', destinatarios().length < 2));
+    document.getElementById('btnEscrever').addEventListener('click', () => { janela.classList.remove('hidden', 'min'); jPara.focus(); });
+    document.getElementById('jFechar').addEventListener('click', (e) => { e.stopPropagation(); janela.classList.add('hidden'); });
+    document.getElementById('jMin').addEventListener('click', (e) => { e.stopPropagation(); janela.classList.toggle('min'); });
+    document.getElementById('janelaCab').addEventListener('click', () => janela.classList.toggle('min'));
+    document.getElementById('jEnviar').addEventListener('click', async () => {
+      const erro = document.getElementById('jErro'); const res = document.getElementById('jResultado');
+      erro.textContent = ''; res.textContent = '';
+      const para = destinatarios(); const assunto = document.getElementById('jAssunto').value.trim(); const mensagem = document.getElementById('jMensagem').value.trim();
+      if (!para.length || !assunto || !mensagem) { erro.textContent = 'Preencha destinatário, assunto e mensagem.'; return; }
+      const btn = document.getElementById('jEnviar'); btn.disabled = true; btn.textContent = 'Enviando…';
       try {
         const r = await chamarFunction('email-enviar', { acao: 'novo', para, assunto, mensagem });
-        res.textContent = `Enviado para ${r.enviados} destinatário(s)${r.falhas ? ` (${r.falhas} falharam)` : ''}.`;
-        document.getElementById('eAssunto').value = ''; document.getElementById('eMensagem').value = ''; document.getElementById('ePara').value = ''; document.getElementById('eParaLista').value = '';
+        res.textContent = `Enviado (${r.enviados})${r.falhas ? `, ${r.falhas} falharam` : ''}.`;
+        document.getElementById('jAssunto').value = ''; document.getElementById('jMensagem').value = ''; jPara.value = '';
+        document.getElementById('jAviso').classList.add('hidden');
+        setTimeout(() => janela.classList.add('hidden'), 1200);
         await carregar();
       } catch (err) {
-        res.style.color = 'var(--status-erro)';
-        res.textContent = err.body && err.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : (err.body && err.body.error) || 'Não foi possível enviar agora.';
+        erro.textContent = err.body && err.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : (err.body && err.body.error) || 'Não foi possível enviar agora.';
       }
-      btn.disabled = false; btn.textContent = 'Enviar e-mail';
+      btn.disabled = false; btn.textContent = 'Enviar';
     });
 
     await carregar();
