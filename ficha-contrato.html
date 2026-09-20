@@ -752,7 +752,20 @@
         btn.addEventListener('click', async () => {
           btn.disabled = true; btn.textContent = 'Gerando...';
           try {
-            const resultado = await gerarLinkContrato(contratoId, 7);
+            let resultado;
+            try {
+              resultado = await gerarLinkContrato(contratoId, 7, false);
+            } catch (e1) {
+              const m = e1.body && e1.body.motivo;
+              const aviso = m === 'revoga_anterior'
+                ? 'Já existe um link em andamento. Gerar um novo link REVOGA o anterior: o cliente não conseguirá mais usar o link antigo. Continuar?'
+                : (m === 'contrato_ja_assinado' || m === 'pagamento_ativo')
+                  ? 'ATENÇÃO: este contrato já foi assinado (ou tem pagamento ativo). Gerar um novo link cria um novo processo e pode afetar o contrato e a prestação de serviço. Só faça isso se tiver certeza. Continuar?'
+                  : null;
+              if (!aviso) throw e1;
+              if (!confirm(aviso)) { btn.disabled = false; btn.textContent = 'Gerar novo link de preenchimento'; return; }
+              resultado = await gerarLinkContrato(contratoId, 7, true);
+            }
             const url = `${window.location.origin}/contrato-publico.html#t=${resultado.token}`;
             const temWhatsapp = contato.whatsapp && contato.whatsapp.replace(/\D/g, '').length >= 10;
             document.getElementById('linkGeradoBox').innerHTML = `

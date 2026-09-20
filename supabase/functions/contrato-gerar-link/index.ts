@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization") ?? "";
     const jwt = authHeader.replace("Bearer ", "");
 
-    let body: { contrato_id?: string; dias_validade?: number };
+    let body: { contrato_id?: string; dias_validade?: number; confirmar_revogacao?: boolean };
     try {
       body = await req.json();
     } catch {
@@ -131,6 +131,43 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Um novo link SUBSTITUI o anterior. Se o cliente ja assinou (ou ja pagou), so quem tem
+    // permissao de administrar pode gerar outro, e so com confirmacao explicita.
+    const { data: existentes } = await supabaseAdmin
+      .from("contrato_links").select("id, status").eq("contrato_id", contrato.id).in("status", ["ativo", "dados_confirmados", "confirmado"]);
+    const abertos = (existentes ?? []).filter((l) => l.status === "ativo" || l.status === "dados_confirmados");
+    const { data: assinou } = await supabaseAdmin
+      .from("contrato_dados_cliente").select("id").eq("contrato_id", contrato.id).not("assinatura_confirmada_em", "is", null).limit(1);
+    const { data: pagando } = await supabaseAdmin
+      .from("assinaturas_recorrentes").select("id").eq("contrato_id", contrato.id).in("status_financeiro", ["ativo", "pendente", "inadimplente"]).limit(1);
+    const jaAssinado = (assinou ?? []).length > 0 || (existentes ?? []).some((l) => l.status === "confirmado");
+    const jaPagando = (pagando ?? []).length > 0;
+
+    if (jaAssinado || jaPagando) {
+      const { data: ehAdmin } = await supabaseAdmin.rpc("tem_permissao", {
+        p_usuario_id: userData.user.id, p_empresa_id: contrato.empresa_id, p_modulo_chave: "contratos", p_acao: "administrar",
+      });
+      if (!ehAdmin) {
+        return jsonResponse({
+          error: jaAssinado
+            ? "Este contrato ja foi assinado pelo cliente. Somente um administrador pode gerar um novo link."
+            : "Ja existe pagamento recorrente ativo neste contrato. Somente um administrador pode gerar um novo link.",
+          motivo: "somente_admin",
+        }, 403);
+      }
+      if (!body.confirmar_revogacao) {
+        return jsonResponse({
+          error: "Contrato ja assinado ou com pagamento ativo: um novo link cria outro processo e pode afetar o contrato e a prestacao de servico.",
+          motivo: jaAssinado ? "contrato_ja_assinado" : "pagamento_ativo",
+        }, 409);
+      }
+    } else if (abertos.length > 0 && !body.confirmar_revogacao) {
+      return jsonResponse({
+        error: "Ja existe um link em andamento. Gerar um novo link revoga o anterior.",
+        motivo: "revoga_anterior",
+      }, 409);
+    }
+
     const token = gerarTokenBase64Url();
     const tokenHash = await sha256Hex(token);
     const expiresAt = new Date(Date.now() + diasValidade * 24 * 60 * 60 * 1000).toISOString();
@@ -149,6 +186,17 @@ Deno.serve(async (req: Request) => {
 
     if (insertError || !link) {
       return jsonResponse({ error: "Falha ao criar o link." }, 500);
+    }
+
+    if (abertos.length > 0) {
+      await supabaseAdmin.from("contrato_links").update({
+        status: "revogado", revoked_at: new Date().toISOString(), revoked_by: userData.user.id,
+        motivo_revogacao: "Substituido por um novo link",
+      }).in("id", abertos.map((l) => l.id)).in("status", ["ativo", "dados_confirmados"]);
+      await supabaseAdmin.from("atividades").insert({
+        empresa_id: contrato.empresa_id, contrato_id: contrato.id, tipo: "link_revogado",
+        titulo: "Link anterior revogado (substituido por um novo link)", usuario_id: userData.user.id,
+      });
     }
 
     const { error: atividadeError } = await supabaseAdmin.from("atividades").insert({

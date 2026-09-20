@@ -20,12 +20,16 @@ async function chamarFunction(nome, payload) {
   });
 
   const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(body.error || `Falha ao chamar ${nome} (HTTP ${resp.status})`);
+  if (!resp.ok) {
+    const erro = new Error(body.error || `Falha ao chamar ${nome} (HTTP ${resp.status})`);
+    erro.body = body;
+    throw erro;
+  }
   return body;
 }
 
-export async function gerarLinkContrato(contratoId, diasValidade = 7) {
-  return chamarFunction('contrato-gerar-link', { contrato_id: contratoId, dias_validade: diasValidade });
+export async function gerarLinkContrato(contratoId, diasValidade = 7, confirmarRevogacao = false) {
+  return chamarFunction('contrato-gerar-link', { contrato_id: contratoId, dias_validade: diasValidade, confirmar_revogacao: confirmarRevogacao });
 }
 
 export async function revogarLinkContrato(linkId, motivoRevogacao) {
