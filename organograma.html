@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organograma — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .org { display: flex; flex-direction: column; align-items: center; gap: 0; }
+    .no-topo { border: 1px solid var(--accent); background: rgba(156,255,25,.08); border-radius: 14px; padding: 14px 22px; text-align: center; max-width: 420px; }
+    .no-topo strong { font-size: 17px; }
+    .liga { width: 2px; height: 26px; background: var(--line-strong); }
+    .barra { height: 2px; background: var(--line-strong); width: min(94%, 1100px); }
+    .filhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; width: 100%; margin-top: 0; }
+    .chat { border: 1px solid var(--line-strong); border-radius: 14px; padding: 16px; background: var(--near-black); display: flex; flex-direction: column; gap: 8px; position: relative; }
+    .chat.hub { border-color: var(--accent); }
+    .chat .sugerido { font-size: 16px; font-weight: 800; line-height: 1.25; }
+    .chat .atual { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); }
+    .chat .papel { font-size: 12.5px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .03em; font-family: var(--font-mono); }
+    .chat h4 { margin: 6px 0 2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 400; }
+    .chat ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+    .chat p { margin: 0; font-size: 13px; line-height: 1.55; }
+    .conector { display: none; }
+    .regras { margin-top: 24px; }
+    .regras li { margin-bottom: 6px; }
+    @media (max-width: 720px) { .no-topo { max-width: 100%; } .barra { display: none; } .liga { height: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+        <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:20px;">Mapa dos chats de IA que trabalham para a Criativamente: quem cuida de quê, com o nome sugerido para cada um. O nome atual é o que aparece hoje; renomear ajuda a ninguém invadir a área do outro.</p>
+
+        <div class="org" id="org"></div>
+
+        <div class="card regras">
+          <div class="mono-label mb-2">Regras de convivência entre os chats</div>
+          <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
+            <li><strong>Decisão é sempre sua.</strong> Nenhum chat envia contrato, mensagem a cliente ou e-mail sem o seu OK, e nenhum mexe em preço, cobrança ou contas externas sozinho.</li>
+            <li><strong>Cada chat mexe só no que é seu.</strong> Se precisar de algo da área de outro, pede pelo chat responsável (troca de mensagens entre sessões) em vez de alterar por conta própria.</li>
+            <li><strong>O CRM é a fonte da verdade</strong> de clientes, contratos, cobranças e e-mails. Os outros leem e escrevem nele só pelos caminhos combinados.</li>
+            <li><strong>Segredos ficam fora dos chats:</strong> chaves e senhas entram por script no terminal, nunca coladas na conversa.</li>
+            <li><strong>Um chat por assunto:</strong> quando um assunto cresce e vira outro produto, abre-se um chat novo com nome e escopo próprios e ele entra neste organograma.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initPage } from '/src/lib/pageInit.js';
+    import { escapeHtml } from '/src/lib/format.js';
+
+    await initPage({ paginaAtual: 'organograma.html', breadcrumb: 'CRM / Gestão / Organograma', title: 'Organograma' });
+
+    const CHATS = [
+      {
+        hub: true, sugerido: 'CRM — Central', atual: 'scratch-2026-09-16 (este chat)', papel: 'Núcleo: dados e cobrança',
+        escopo: ['CRM (crm.criativamentedigital.com.br) e banco Supabase', 'Contratos: minuta, link público, assinatura, PDF, cópia e segunda via', 'Pagamento recorrente (Mercado Pago) e webhook', 'E-mail contato@ (Resend + Cloudflare) e caixa de entrada', 'Permissões, catálogo de produtos e preços'],
+        naoFaz: ['Criar o conteúdo dos sites', 'Prospecção e conversas de WhatsApp', 'Desenvolver o produto CriativaBio'],
+        acionar: 'Qualquer coisa que envolva cliente, contrato, cobrança, e-mail ou o banco do CRM.',
+      },
+      {
+        sugerido: 'WhatsApp — Atendimento e Ofertas', atual: 'Claude Whatsapp', papel: 'Comunicação e prospecção',
+        escopo: ['Conversas de WhatsApp com clientes e leads (com portão de aprovação)', 'Rascunhos de proposta e contrato a partir das conversas', 'PromoWhats: mineração e publicação de ofertas de afiliados (Mercado Livre e Shopee)', 'Integração WhatsApp → CRM'],
+        naoFaz: ['Enviar mensagem sem sua aprovação', 'Alterar contrato já enviado ou assinado', 'Mexer em cobrança'],
+        acionar: 'Falar com cliente, montar proposta a partir de uma conversa, rodar ou ajustar as ofertas de afiliados.',
+      },
+      {
+        sugerido: 'Sites — Estúdio', atual: 'Criação de sites', papel: 'Produção de sites e landing pages',
+        escopo: ['Site institucional da Criativamente e template de site de cliente', 'Landing pages e sites (planos Gerenciado e Próprio)', 'Publicação (Cloudflare e GitHub), domínios e entrega ao cliente', 'Manutenção e suporte dos sites contratados'],
+        naoFaz: ['Definir preço ou texto do contrato', 'Cobrar mensalidade', 'Publicar site sem o pagamento/assinatura previstos'],
+        acionar: 'Criar, publicar, ajustar ou transferir um site ou landing page.',
+      },
+      {
+        sugerido: 'CriativaBio — Produto', atual: 'CriativaBio', papel: 'Produto próprio (SaaS)',
+        escopo: ['Plataforma de link na bio (app, API, painel administrativo)', 'Cobrança do produto (Mercado Pago, conta própria da aplicação)', 'E-mails do produto (Resend, domínio criativabio.com.br)', 'Suporte e caixa de entrada do CriativaBio'],
+        naoFaz: ['Mexer em contratos e clientes do CRM', 'Alterar o banco do CRM'],
+        acionar: 'Qualquer evolução, bug ou dúvida do CriativaBio.',
+      },
+      {
+        sugerido: 'AutoCut — Edição de Vídeo', atual: 'AutoCut', papel: 'Produção de conteúdo em vídeo',
+        escopo: ['Corte e edição automática das aulas gravadas (Criativamente Editor)', 'Fila de vídeos dos cursos em produção', 'Padronização de vinheta, legenda e exportação'],
+        naoFaz: ['Prazos e valores de contrato', 'Enviar material ao cliente sem sua revisão'],
+        acionar: 'Editar as aulas de um curso contratado ou melhorar o editor.',
+      },
+    ];
+
+    const lista = (itens) => `<ul>${itens.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+    const card = (c) => `
+      <div class="chat ${c.hub ? 'hub' : ''}">
+        <span class="papel">${escapeHtml(c.papel)}</span>
+        <div class="sugerido">${escapeHtml(c.sugerido)}</div>
+        <div class="atual">hoje: ${escapeHtml(c.atual)}</div>
+        <h4>Escopo</h4>${lista(c.escopo)}
+        <h4>Não faz</h4>${lista(c.naoFaz)}
+        <h4>Acionar quando</h4><p>${escapeHtml(c.acionar)}</p>
+      </div>`;
+
+    const [hub, ...demais] = CHATS;
+    document.getElementById('org').innerHTML = `
+      <div class="no-topo"><strong>Edvan Nunes</strong><div class="text-muted" style="font-size:12.5px; margin-top:2px;">Dono e decisor final: aprova contratos, preços, envios e acessos</div></div>
+      <div class="liga"></div>
+      <div style="width:100%; max-width:520px;">${card(hub)}</div>
+      <div class="liga"></div>
+      <div class="barra"></div>
+      <div class="liga" style="height:14px;"></div>
+      <div class="filhos">${demais.map(card).join('')}</div>`;
+  </script>
+</body>
+</html>

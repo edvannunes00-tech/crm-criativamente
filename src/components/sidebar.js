@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { label: 'Recorrências', href: 'recorrencias.html', modulos: ['financeiro', 'contratos'] },
   { label: 'E-mail', href: 'caixa-entrada.html', modulos: ['email'] },
   { label: 'Gestão', href: 'gestao.html', modulos: ['gestao'] },
+  { label: 'Organograma', href: 'organograma.html', modulos: ['gestao'] },
   { label: 'Configurações', href: 'configuracoes.html', modulos: ['configuracoes', 'usuarios', 'permissoes'] },
 ];
 
