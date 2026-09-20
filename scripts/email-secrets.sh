@@ -17,13 +17,19 @@ if [ -z "${KEY}" ]; then echo "Chave vazia. Nada foi salvo."; exit 1; fi
 echo "Tamanho da chave: ${#KEY} caracteres."
 case "${KEY}" in re_*) ;; *) echo "A chave do Resend começa com re_. Confira se copiou a chave certa. Nada foi salvo."; exit 1;; esac
 
-# 401 = chave inválida. 200/403 = chave válida (403 é normal em chave só de envio).
-CODE="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${KEY}" https://api.resend.com/domains || true)"
-if [ "${CODE}" = "401" ] || [ "${CODE}" = "000" ]; then
-  echo "O Resend recusou esta chave (HTTP ${CODE}). Nada foi salvo. Colou UMA vez só?"
+# Chave "só de envio" responde 401 com restricted_api_key ao listar domínios: isso é NORMAL (a chave é válida).
+# Chave inexistente/errada responde 401 com outro motivo (ex.: invalid_api_key).
+RESP="$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer ${KEY}" https://api.resend.com/domains || true)"
+CODE="$(printf '%s' "${RESP}" | tail -n1)"
+BODY="$(printf '%s' "${RESP}" | sed '$d')"
+if printf '%s' "${BODY}" | grep -q 'restricted_api_key'; then
+  echo "Chave de envio (restrita) reconhecida pelo Resend."
+elif [ "${CODE}" = "200" ]; then
+  echo "Chave completa reconhecida pelo Resend."
+else
+  echo "O Resend recusou esta chave (HTTP ${CODE}). Nada foi salvo. Colou UMA vez só, sem espaços?"
   exit 1
 fi
-echo "Chave aceita pelo Resend."
 
 $SB secrets set --project-ref "$REF" \
   "RESEND_API_KEY=${KEY}" \
