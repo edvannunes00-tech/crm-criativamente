@@ -242,7 +242,13 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
   });
 
   // ---- Assinaturas: lado a lado, sempre juntas na mesma página ----
-  const alturaBloco = 190;
+  // Altura real do bloco (titulo + colunas), calculada com as quebras de linha dos nomes.
+  const colLargMedida = (largura - 28) / 2;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  const linhasNome = Math.max(quebrarLinhas(doc, ctx.contratanteEmpresa, colLargMedida - 6).length, quebrarLinhas(doc, clienteIdentificacao, colLargMedida - 6).length);
+  const temDataAssinatura = Boolean(contratadaAssinaturaDataUrl || assinatura?.dataUrl);
+  const alturaBloco = 18 + 4 + 12 + 60 + (temDataAssinatura ? 12 : 0) + 12 + linhasNome * 12 + 14 + 6;
   if (y + 24 + alturaBloco > doc.internal.pageSize.getHeight() - rodapeReservado) {
     doc.addPage();
     y = topoConteudo;
