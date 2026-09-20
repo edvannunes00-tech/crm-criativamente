@@ -2,3 +2,4 @@
 supabase/.temp/
 workers/*/node_modules/
 workers/*/.wrangler/
+equipe/originais/
