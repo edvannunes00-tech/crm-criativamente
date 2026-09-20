@@ -139,7 +139,12 @@ Deno.serve(async (req: Request) => {
         },
       }),
     });
-    if (!resp.ok) return json({ ok: false, motivo: "falha_no_provedor" }); // nunca repassa o corpo do erro (pode ecoar o e-mail)
+    if (!resp.ok) {
+      // Por padrao nunca repassa o corpo do erro (pode ecoar o e-mail). Diagnostico so com MERCADO_PAGO_DEBUG=1.
+      if (Deno.env.get("MERCADO_PAGO_DEBUG") !== "1") return json({ ok: false, motivo: "falha_no_provedor" });
+      let d: Row = {}; try { d = await resp.json(); } catch { /* sem corpo */ }
+      return json({ ok: false, motivo: "falha_no_provedor", debug: { http: resp.status, message: d.message, error: d.error, cause: Array.isArray(d.cause) ? d.cause.map((c: Row) => ({ code: c.code, description: c.description })) : undefined } });
+    }
     const mp = await resp.json();
     if (!mp.id || !mp.init_point) return json({ ok: false, motivo: "falha_no_provedor" });
 
