@@ -11,7 +11,7 @@
 // ============================================================
 import { supabase } from './supabaseClient.js';
 import { formatarMoeda, formatarData } from './format.js';
-import { CLAUSULAS, montarContextoJuridico } from './contratoTexto.js';
+import { clausulasDoContrato, montarContextoJuridico } from './contratoTexto.js';
 
 function quebrarLinhas(doc, texto, larguraMax) {
   return doc.splitTextToSize(texto, larguraMax);
@@ -223,7 +223,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
     clienteNomeCompleto, clienteCpfCnpj, clienteEmpresaMarca, clienteEndereco, itens,
     suporteInicio: contrato.suporte_inicio,
   });
-  CLAUSULAS.forEach((c) => {
+  clausulasDoContrato(ctx).forEach((c) => {
     titulo(c.titulo, 11);
     paragrafo(c.texto(ctx));
     novaLinha(6);

@@ -1,0 +1,5 @@
+-- Contratos — Migration 30
+-- Snapshot da recorrencia no item do contrato (tipo e valores mensal/anual congelados no INSERT),
+-- para o checkout cobrar o que foi contratado e nao o preco vigente do catalogo.
+-- (corpo completo aplicado via apply_migration 30_snapshot_recorrencia_contrato_itens;
+-- trg_before_contrato_item copia recorrencia_tipo/valor_mensal/valor_anual do produto no INSERT)

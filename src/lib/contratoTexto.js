@@ -171,6 +171,40 @@ export const CLAUSULAS = [
   },
 ];
 
+
+// ------------------------------------------------------------
+// Cláusulas da MANUTENÇÃO E SUPORTE RECORRENTES — só entram em contratos com
+// item recorrente (snapshot em contrato_itens.recorrencia_tipo). Modelo-base:
+// REVISÃO JURÍDICA RECOMENDADA (cancelamento, suspensão por inadimplência,
+// CDC art. 49 e efeitos sobre o site conforme o modelo Gerenciado/Próprio).
+// ------------------------------------------------------------
+export const CLAUSULAS_RECORRENCIA = [
+  {
+    titulo: 'CLÁUSULA 14ª — DA MANUTENÇÃO E SUPORTE RECORRENTES',
+    texto: () => `A CONTRATADA prestará ao CONTRATANTE, de forma recorrente, o serviço de manutenção e suporte descrito no Escopo Detalhado, contratado de forma separada e independente da criação do site ou landing page, cujo preço é ajustado em instrumento próprio. A contratação deste serviço não impõe qualquer período mínimo de permanência (fidelidade) nem decorre da criação do site.`,
+  },
+  {
+    titulo: 'CLÁUSULA 14ª-A — DA PERIODICIDADE, COBRANÇA E RENOVAÇÃO',
+    texto: () => `O serviço é contratado na periodicidade mensal ou anual escolhida pelo CONTRATANTE, no valor informado no Quadro Comercial e na etapa de pagamento. A cobrança é recorrente, realizada em cartão de crédito por meio do Mercado Pago, e se renova automaticamente a cada período enquanto a contratação não for cancelada. O plano anual representa apenas uma periodicidade de cobrança diferente e não cria obrigação de permanência por 12 meses. Os dados do cartão são tratados exclusivamente pelo provedor de pagamento, não sendo armazenados pela CONTRATADA. A contratação somente é considerada ativa após a confirmação do pagamento pelo provedor.`,
+  },
+  {
+    titulo: 'CLÁUSULA 14ª-B — DO CANCELAMENTO',
+    texto: () => `O CONTRATANTE poderá cancelar a contratação recorrente a qualquer momento, sem multa e sem período mínimo, o que interrompe as cobranças futuras. Havendo período já pago, o serviço será mantido até o final desse período, sem reembolso proporcional, ressalvados os direitos do CONTRATANTE previstos em lei, inclusive o direito de arrependimento do art. 49 do Código de Defesa do Consumidor, quando aplicável. Os efeitos do cancelamento sobre a hospedagem e a disponibilidade do site seguem o modelo contratado na criação do site (Gerenciado ou Próprio), conforme o respectivo instrumento. O cancelamento preserva o histórico contratual e financeiro para fins de registro.`,
+  },
+  {
+    titulo: 'CLÁUSULA 14ª-C — DA INADIMPLÊNCIA E SUSPENSÃO DO SUPORTE',
+    texto: () => `Havendo falha na cobrança, a CONTRATADA acompanhará o ciclo de novas tentativas realizado pelo provedor de pagamento, sem cancelar a contratação por uma única falha. Persistindo a falta de pagamento, o CONTRATANTE será avisado e, decorridos 7 (sete) dias corridos contados da última tentativa de cobrança sem sucesso, o suporte e a manutenção poderão ser suspensos até a regularização, sem exclusão do conteúdo do CONTRATANTE. Regularizado o pagamento, o serviço será restabelecido. Durante a suspensão, eventuais solicitações poderão ser atendidas como serviço avulso, mediante orçamento prévio.`,
+  },
+  {
+    titulo: 'CLÁUSULA 14ª-D — DOS LIMITES DO SERVIÇO E DOS SERVIÇOS ADICIONAIS',
+    texto: () => `O serviço abrange apenas o que consta do Escopo Detalhado, para orientação, auxílio operacional e ajustes simples dentro da estrutura existente. Não estão incluídos criação de novas páginas, troca de layout, novas funcionalidades, criação de novos conteúdos, regravações ou quaisquer serviços não previstos, que serão cobrados separadamente, mediante orçamento prévio. Aplicam-se à manutenção recorrente, no que couber, as cláusulas 6ª-C (acessos a plataformas e sistemas) e 6ª-D (regravação de aulas).`,
+  },
+];
+
+export function clausulasDoContrato(ctx) {
+  return ctx && ctx.recorrencia ? [...CLAUSULAS, ...CLAUSULAS_RECORRENCIA] : CLAUSULAS;
+}
+
 export function montarContextoJuridico({
   empresaNome,
   contratadaDocumento,
@@ -184,6 +218,7 @@ export function montarContextoJuridico({
   clienteEndereco,
   itens,
   suporteInicio,
+  recorrencia,
 }) {
   const clienteIdentificacao = clienteEmpresaMarca
     ? `${clienteNomeCompleto || '—'} / ${clienteEmpresaMarca}`
@@ -207,6 +242,7 @@ export function montarContextoJuridico({
     clienteEndereco: clienteEndereco || null,
     escopoTexto: montarTextoEscopo(itens, suporteInicio),
     suporteInicio: suporteInicio === 'assinatura' ? 'assinatura' : 'entrega',
+    recorrencia: recorrencia ?? (itens || []).some((i) => i.recorrencia_tipo),
     prazoSuporteMeses,
     foroComarca: 'domicílio da CONTRATADA',
   };

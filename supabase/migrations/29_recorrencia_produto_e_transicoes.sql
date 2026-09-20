@@ -1,0 +1,9 @@
+-- Contratos — Migration 29
+-- Produto recorrente (valores oficiais no catalogo), coluna checkout_url e as funcoes de
+-- transicao de estado: crm.carencia_dias_recorrencia (padrao 7, configuravel via
+-- configuracoes.recorrencia_carencia_dias), crm.aplicar_preapproval (estado da assinatura
+-- vindo do provedor) e crm.registrar_cobranca_recorrente (idempotente por pagamento).
+-- Regras: authorized->ativo; paused->inadimplente com carencia; cancelled->cancelado (terminal);
+-- cobranca aprovada->ativo e limpa carencia; recusada->pendente com carencia; eventos repetidos
+-- nao geram efeito nem atividade. Toda a logica vive no banco (testavel sem o gateway).
+-- (corpo completo aplicado via apply_migration 29_recorrencia_produto_e_transicoes)

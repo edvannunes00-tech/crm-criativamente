@@ -35,15 +35,20 @@
   <script type="module">
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
     import { formatarMoeda } from '/src/lib/format.js';
-    import { CLAUSULAS, montarContextoJuridico } from '/src/lib/contratoTexto.js';
+    import { clausulasDoContrato, montarContextoJuridico } from '/src/lib/contratoTexto.js';
     import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/contrato-publico`;
     const hash = window.location.hash.replace('#', '');
     const params = new URLSearchParams(hash);
-    const token = params.get('t');
+    let token = params.get('t');
+    try {
+      if (token) sessionStorage.setItem('contratoToken', token);
+      else token = sessionStorage.getItem('contratoToken');
+    } catch { /* sem sessionStorage: segue so com o hash */ }
     const conteudo = document.getElementById('conteudo');
-    const TOTAL_PASSOS = 6;
+    const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/recorrencia-checkout`;
+    const totalPassos = () => (dadosContrato && dadosContrato.recorrencia ? 7 : 6);
 
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
@@ -81,6 +86,7 @@
         if (!body.disponivel) { renderIndisponivel(); return; }
         dadosContrato = body.contrato;
         dadosContratada = body.contratada || null;
+        if (body.pos_confirmacao) { renderPagamento(); return; }
         renderRevisao();
       } catch {
         conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
@@ -90,7 +96,7 @@
     function renderRevisao() {
       const c = dadosContrato;
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 1 de ${TOTAL_PASSOS} — O que você está contratando</div>
+        <div class="passo-label">Passo 1 de ${totalPassos()} — O que você está contratando</div>
         <div class="card mb-4">
           <div style="font-size:17px; font-weight:800; margin-bottom:12px;">${escapeHtml(c.titulo)}</div>
           ${(c.itens || []).map((i) => `
@@ -114,7 +120,7 @@
 
     function renderFormularioDados() {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 2 de ${TOTAL_PASSOS} — Seus dados</div>
+        <div class="passo-label">Passo 2 de ${totalPassos()} — Seus dados</div>
         <div class="card">
           <form id="formDados">
             <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
@@ -176,7 +182,7 @@
     function renderEscopo() {
       const itens = dadosContrato.itens || [];
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 3 de ${TOTAL_PASSOS} — Escopo contratado</div>
+        <div class="passo-label">Passo 3 de ${totalPassos()} — Escopo contratado</div>
         <div class="card">
           ${itens.map((i) => `
             <div class="mb-4">
@@ -224,14 +230,15 @@
         clienteEndereco: [dadosPreenchidos.endereco_logradouro, dadosPreenchidos.endereco_numero, dadosPreenchidos.endereco_complemento, dadosPreenchidos.endereco_bairro, dadosPreenchidos.endereco_cidade, dadosPreenchidos.endereco_estado, dadosPreenchidos.endereco_cep].filter(Boolean).join(', '),
         itens: dadosContrato.itens,
         suporteInicio: dadosContrato.suporte_inicio,
+        recorrencia: dadosContrato.recorrencia,
       });
 
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 4 de ${TOTAL_PASSOS} — Contrato completo</div>
+        <div class="passo-label">Passo 4 de ${totalPassos()} — Contrato completo</div>
         <div class="card">
           <p style="font-size:13px; margin-bottom:10px;">Leia o contrato completo antes de prosseguir. Este é exatamente o texto que também vai compor o documento final (PDF).</p>
           <div class="contrato-texto">
-            ${CLAUSULAS.map((c) => `<h4>${escapeHtml(c.titulo)}</h4><p>${escapeHtml(c.texto(ctx))}</p>`).join('')}
+            ${clausulasDoContrato(ctx).map((c) => `<h4>${escapeHtml(c.titulo)}</h4><p>${escapeHtml(c.texto(ctx))}</p>`).join('')}
           </div>
         </div>
         <button class="btn btn-primary btn-block mt-4" id="btnLi">Li e entendi — prosseguir</button>
@@ -241,7 +248,7 @@
 
     function renderConfirmacao(dados) {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 5 de ${TOTAL_PASSOS} — Confirmação</div>
+        <div class="passo-label">Passo 5 de ${totalPassos()} — Confirmação</div>
         <div class="card">
           <p style="font-size:14px; margin-bottom:8px;">Revise rapidamente:</p>
           <div class="resumo-linha"><span>Nome</span><span>${escapeHtml(dados.nome_completo)}</span></div>
@@ -275,7 +282,7 @@
             renderIndisponivel();
             return;
           }
-          renderAssinatura();
+          if (dadosContrato.recorrencia) renderPagamento(); else renderAssinatura();
         } catch {
           alert('Não foi possível confirmar agora. Tente novamente.');
           btn.disabled = false; btn.textContent = 'Confirmar e continuar';
@@ -283,10 +290,96 @@
       });
     }
 
-    function renderAssinatura() {
+    async function chamarCheckout(acao, extra = {}) {
+      const resp = await fetch(CHECKOUT_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, acao, ...extra }),
+      });
+      return resp.json();
+    }
+
+    const MSG_MOTIVO = {
+      pagamento_nao_configurado: 'O pagamento recorrente ainda não está disponível neste momento. Nossa equipe entrará em contato para concluir a contratação.',
+      recorrencia_ja_existente: 'Já existe uma assinatura para este contrato. Atualize a página para ver a situação.',
+      falha_no_provedor: 'Não foi possível abrir o pagamento agora. Tente novamente em instantes.',
+      email_do_cliente_ausente: 'Não encontramos o e-mail informado. Volte e confira seus dados.',
+    };
+
+    let pollingPagamento = 0;
+
+    async function renderPagamento() {
+      const rotulo = `Passo 6 de ${totalPassos()} — Pagamento`;
+      conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="skeleton" style="height:160px;"></div>`;
+      let st;
+      try { st = await chamarCheckout('status'); } catch { st = null; }
+      if (!st || !st.ok) { renderIndisponivel(); return; }
+
+      const a = st.assinatura;
+      const voltouDoCheckout = new URLSearchParams(window.location.search).get('pagamento') === 'retorno';
+
+      if (!st.configurado && !a) {
+        conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="card"><p style="font-size:14px; line-height:1.6;">${MSG_MOTIVO.pagamento_nao_configurado}</p></div>`;
+        return;
+      }
+
+      if (a && a.status_financeiro === 'ativo') {
+        if (st.assinou_contrato) {
+          conteudo.innerHTML = `<div class="card" style="text-align:center;"><div style="font-size:32px; margin-bottom:12px;">✓</div><p style="font-size:15px; font-weight:700;">Contratação concluída</p><p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">O pagamento recorrente foi confirmado e o contrato está assinado.</p></div>`;
+        } else {
+          renderAssinatura(true);
+        }
+        return;
+      }
+
+      if (a && (a.status_financeiro === 'pendente' || a.status_financeiro === 'inadimplente')) {
+        conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="card"><p style="font-size:14px; line-height:1.6;">Há uma cobrança pendente para esta assinatura. Ela ainda não foi confirmada pelo Mercado Pago.</p><button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button></div>`;
+        document.getElementById('btnVerificar').addEventListener('click', renderPagamento);
+        return;
+      }
+
+      if (a && a.status_financeiro === 'aguardando_pagamento' && a.tem_checkout) {
+        conteudo.innerHTML = `
+          <div class="passo-label">${rotulo}</div>
+          <div class="card">
+            <p style="font-size:14px; line-height:1.6;">${voltouDoCheckout ? 'Estamos aguardando a confirmação do Mercado Pago. Isso pode levar alguns instantes.' : 'Seu pagamento ainda não foi confirmado.'}</p>
+            <button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button>
+            <button class="btn btn-primary btn-block mt-2" id="btnContinuarPagamento">Continuar para o pagamento</button>
+          </div>`;
+        document.getElementById('btnVerificar').addEventListener('click', renderPagamento);
+        document.getElementById('btnContinuarPagamento').addEventListener('click', () => iniciarPagamento(a.periodicidade));
+        if (voltouDoCheckout && pollingPagamento < 12) { pollingPagamento += 1; setTimeout(renderPagamento, 5000); }
+        return;
+      }
+
+      const v = st.valores || {};
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 6 de ${TOTAL_PASSOS} — Assinatura</div>
+        <div class="passo-label">${rotulo}</div>
         <div class="card">
+          <p style="font-size:15px; font-weight:700; margin-bottom:6px;">Escolha como deseja contratar</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">Manutenção e suporte. Sem período mínimo de fidelidade. O plano anual é apenas uma periodicidade de cobrança diferente.</p>
+          <button class="btn btn-primary btn-block" id="btnMensal">${formatarMoeda(v.mensal)} / mês</button>
+          <button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano</button>
+          <p class="text-muted mt-4" style="font-size:11.5px; line-height:1.6;">O pagamento é feito no ambiente seguro do Mercado Pago. Nós não armazenamos os dados do seu cartão. A contratação só é concluída depois da confirmação do pagamento pelo Mercado Pago.</p>
+        </div>`;
+      document.getElementById('btnMensal').addEventListener('click', () => iniciarPagamento('mensal'));
+      document.getElementById('btnAnual').addEventListener('click', () => iniciarPagamento('anual'));
+    }
+
+    async function iniciarPagamento(periodicidade) {
+      try {
+        const r = await chamarCheckout('iniciar', { periodicidade });
+        if (r && r.ok && r.checkout_url) { window.location.href = r.checkout_url; return; }
+        alert((r && MSG_MOTIVO[r.motivo]) || 'Não foi possível iniciar o pagamento agora.');
+      } catch {
+        alert('Não foi possível iniciar o pagamento agora. Tente novamente.');
+      }
+    }
+
+    function renderAssinatura(pagamentoConfirmado) {
+      conteudo.innerHTML = `
+        <div class="passo-label">Passo ${totalPassos()} de ${totalPassos()} — Assinatura</div>
+        <div class="card">
+          ${pagamentoConfirmado ? '<p class="text-muted" style="font-size:12.5px; margin-bottom:10px;">✓ Pagamento recorrente confirmado pelo Mercado Pago.</p>' : ''}
           <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
           <div class="flex gap-2 mb-2">
             <input type="text" id="assinaturaTexto" placeholder="Ou digite seu nome para assinar em letra cursiva" style="flex:2;" />
@@ -383,7 +476,7 @@
             body: JSON.stringify({ token, acao: 'assinar', imagem: imagemBase64 }),
           });
           const body = await resp.json();
-          if (!body.ok) { renderIndisponivel(); return; }
+          if (!body.ok) { if (body.motivo === 'pagamento_pendente') { alert('O pagamento ainda não foi confirmado pelo Mercado Pago.'); renderPagamento(); return; } renderIndisponivel(); return; }
           conteudo.innerHTML = `
             <div class="card" style="text-align:center;">
               <div style="font-size:32px; margin-bottom:12px;">✓</div>

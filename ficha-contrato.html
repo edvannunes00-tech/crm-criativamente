@@ -22,6 +22,7 @@
       <div class="page-content">
 
         <div id="cabecalho"><div class="skeleton" style="height:90px;"></div></div>
+        <div id="blocoRecorrencia"></div>
 
         <div class="tabs" id="tabsNav">
           <button class="tab active" data-tab="comercial">Comercial</button>
@@ -47,6 +48,7 @@
     import { gerarLinkContrato, revogarLinkContrato } from '/src/lib/contratoLinks.js';
     import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento, sugerirCondicaoPorFaixa } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
+    import { renderBlocoRecorrencia } from '/src/lib/recorrenciaUi.js';
     import { FONTES_ASSINATURA, garantirFontesAssinatura, desenharTextoNoCanvas } from '/src/lib/assinaturaTexto.js';
 
     const { session, perm } = await initPage({ paginaAtual: 'contratos.html', breadcrumb: 'CRM / Contratos / Ficha', title: 'Ficha do Contrato' });
@@ -964,7 +966,10 @@
     document.querySelectorAll('#tabsNav .tab').forEach((btn) => btn.addEventListener('click', () => abrirAba(btn.dataset.tab)));
 
     await carregarCabecalho();
-    if (contrato) await abrirAba('comercial');
+    if (contrato) {
+      renderBlocoRecorrencia(document.getElementById('blocoRecorrencia'), { filtro: { contrato_id: contratoId }, podeCancelar: podeEditar });
+      await abrirAba('comercial');
+    }
   </script>
 </body>
 </html>

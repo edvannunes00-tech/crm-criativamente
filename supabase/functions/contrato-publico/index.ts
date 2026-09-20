@@ -41,6 +41,26 @@ function criarSupabaseAdmin() {
   });
 }
 
+async function temRecorrencia(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin>, contratoId: string): Promise<boolean> {
+  // Snapshot gravado no item no momento da contratacao (migration 30), nunca o catalogo vivo.
+  const { data } = await supabaseAdmin.from("contrato_itens").select("id").eq("contrato_id", contratoId).not("recorrencia_tipo", "is", null).limit(1);
+  return (data ?? []).length > 0;
+}
+
+async function dadosContratada(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin>, empresaId: string) {
+  const { data: empresaRow } = await supabaseAdmin.from("empresas").select("nome").eq("id", empresaId).maybeSingle();
+  const { data: fiscalRow } = await supabaseAdmin.from("configuracoes").select("valor").eq("empresa_id", empresaId).eq("chave", "dados_fiscais_contratada").maybeSingle();
+  const fiscal = (fiscalRow?.valor as Record<string, string | null>) ?? {};
+  return {
+    nome: fiscal.razao_social || empresaRow?.nome || "Criativamente",
+    documento: fiscal.cnpj_cpf || null,
+    endereco: fiscal.endereco || null,
+    responsavel: fiscal.responsavel_legal || null,
+    responsavelCpf: fiscal.responsavel_cpf || null,
+    responsavelCargo: fiscal.responsavel_cargo || null,
+  };
+}
+
 async function handleGet(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const token = url.searchParams.get("t");
@@ -61,6 +81,22 @@ async function handleGet(req: Request): Promise<Response> {
   }
 
   const acesso = acessoRows?.[0];
+
+  // Contrato de recorrencia (manutencao): depois de o cliente confirmar os dados o link
+  // fica "confirmado", mas a pagina ainda precisa continuar (pagamento e assinatura).
+  // Devolve so o minimo, sem dados pessoais.
+  if (acesso && acesso.status_link === "confirmado" && (await temRecorrencia(supabaseAdmin, acesso.contrato_id))) {
+    const { data: c } = await supabaseAdmin.from("contratos").select("empresa_id, titulo").eq("id", acesso.contrato_id).maybeSingle();
+    if (c) {
+      return jsonResponse({
+        disponivel: true,
+        pos_confirmacao: true,
+        contrato: { titulo: c.titulo, recorrencia: true },
+        contratada: await dadosContratada(supabaseAdmin, c.empresa_id),
+      }, 200);
+    }
+  }
+
   if (!acesso || acesso.status_link !== "ativo") {
     return jsonResponse({ disponivel: false }, 200);
   }
@@ -99,23 +135,7 @@ async function handleGet(req: Request): Promise<Response> {
     .select("descricao, quantidade")
     .eq("contrato_id", acesso.contrato_id);
 
-  // Identificacao da CONTRATADA (nome + dados fiscais configurados) --
-  // nunca inventada: se nao configurado, os campos vem nulos e a pagina
-  // publica/PDF mostram "nao informado" em vez de um dado fictício.
-  const { data: empresaRow } = await supabaseAdmin
-    .from("empresas")
-    .select("nome")
-    .eq("id", contrato.empresa_id)
-    .maybeSingle();
-
-  const { data: fiscalRow } = await supabaseAdmin
-    .from("configuracoes")
-    .select("valor")
-    .eq("empresa_id", contrato.empresa_id)
-    .eq("chave", "dados_fiscais_contratada")
-    .maybeSingle();
-
-  const fiscal = (fiscalRow?.valor as Record<string, string | null>) ?? {};
+  const recorrencia = await temRecorrencia(supabaseAdmin, acesso.contrato_id);
   const { empresa_id: _empresaId, ...contratoPublico } = contrato;
 
   return jsonResponse(
@@ -125,15 +145,9 @@ async function handleGet(req: Request): Promise<Response> {
         ...contratoPublico,
         itens: itens ?? [],
         bonus: bonus ?? [],
+        recorrencia,
       },
-      contratada: {
-        nome: fiscal.razao_social || empresaRow?.nome || "Criativamente",
-        documento: fiscal.cnpj_cpf || null,
-        endereco: fiscal.endereco || null,
-        responsavel: fiscal.responsavel_legal || null,
-        responsavelCpf: fiscal.responsavel_cpf || null,
-        responsavelCargo: fiscal.responsavel_cargo || null,
-      },
+      contratada: await dadosContratada(supabaseAdmin, contrato.empresa_id),
     },
     200
   );
@@ -173,6 +187,19 @@ async function handleAssinar(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin
 
   if (!link || link.status !== "confirmado") {
     return jsonResponse({ ok: false, motivo: "link_indisponivel" }, 200);
+  }
+
+  // Contrato de recorrencia: so assina depois que o PROVEDOR confirmou a assinatura
+  // (status financeiro "ativo" gravado pelo backend) -- nunca por afirmacao do navegador.
+  if (await temRecorrencia(supabaseAdmin, link.contrato_id)) {
+    const { data: rec } = await supabaseAdmin
+      .from("assinaturas_recorrentes")
+      .select("id")
+      .eq("contrato_id", link.contrato_id)
+      .eq("status_financeiro", "ativo")
+      .limit(1)
+      .maybeSingle();
+    if (!rec) return jsonResponse({ ok: false, motivo: "pagamento_pendente" }, 200);
   }
 
   let bytes: Uint8Array;

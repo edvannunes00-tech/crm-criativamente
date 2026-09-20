@@ -19,6 +19,7 @@
         </div>
 
         <div class="indicator-grid" id="resumoCards"></div>
+        <div id="blocoRecorrencia"></div>
 
         <div class="tabs" id="tabsNav">
           <button class="tab active" data-tab="resumo">Resumo</button>
@@ -63,6 +64,7 @@
     import { initPage } from '/src/lib/pageInit.js';
     import { formatarMoeda, formatarData, tempoRelativo, escapeHtml, whatsappLink, statusBadgeClasse, aplicarMascaraTelefone, exibirTelefone } from '/src/lib/format.js';
     import { podeFazer } from '/src/lib/session.js';
+    import { renderBlocoRecorrencia } from '/src/lib/recorrenciaUi.js';
 
     const { perm } = await initPage({ paginaAtual: 'clientes.html', breadcrumb: 'CRM / Clientes / Ficha', title: 'Ficha do Cliente' });
     const podeEditar = podeFazer(perm, 'leads', 'editar') || podeFazer(perm, 'clientes', 'editar');
@@ -364,7 +366,10 @@
     });
 
     await carregarCabecalho();
-    if (contato) await abrirAba('resumo');
+    if (contato) {
+      renderBlocoRecorrencia(document.getElementById('blocoRecorrencia'), { filtro: { contato_id: contatoId }, podeCancelar: false, linkContrato: true });
+      await abrirAba('resumo');
+    }
   </script>
 </body>
 </html>

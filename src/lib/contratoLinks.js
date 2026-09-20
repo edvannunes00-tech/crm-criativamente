@@ -31,3 +31,7 @@ export async function gerarLinkContrato(contratoId, diasValidade = 7) {
 export async function revogarLinkContrato(linkId, motivoRevogacao) {
   return chamarFunction('contrato-revogar-link', { link_id: linkId, motivo_revogacao: motivoRevogacao || null });
 }
+
+export async function cancelarRecorrencia(assinaturaId, motivo) {
+  return chamarFunction('recorrencia-cancelar', { assinatura_id: assinaturaId, motivo: motivo || null });
+}
