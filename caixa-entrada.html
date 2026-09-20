@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-mail — CRM Criativamente</title>
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    .mail-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 900px) { .mail-layout { grid-template-columns: 1fr; } }
+    .mail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .mail-item { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--near-black); }
+    .mail-item.is-unread { background: rgba(156, 255, 25, 0.08); border-color: var(--accent); }
+    .mail-item.is-selected { outline: 1px solid var(--accent); }
+    .mail-item-main { flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 0; font: inherit; }
+    .mail-from { font-weight: 800; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mail-subject { font-size: 13px; color: var(--gray-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mail-meta { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); }
+    .mail-badge { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 800; margin-left: 8px; }
+    .bolha { max-width: 92%; padding: 10px 12px; border-radius: 12px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .bolha.in { background: var(--near-black); border: 1px solid var(--line-strong); align-self: flex-start; }
+    .bolha.out { background: rgba(156, 255, 25, 0.12); border: 1px solid var(--accent); align-self: flex-end; }
+    .bolha-meta { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); margin-bottom: 4px; }
+    .thread { display: flex; flex-direction: column; gap: 10px; }
+    .bulk { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    textarea { width: 100%; min-height: 110px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebarContainer"></div>
+    <div class="main-area">
+      <div id="headerContainer"></div>
+      <div class="page-content">
+        <p class="text-muted" style="font-size:12.5px; line-height:1.6; margin-bottom:12px;" id="dica"></p>
+
+        <div class="filter-bar">
+          <button class="btn btn-primary btn-sm" id="btnEscrever">Escrever e-mail</button>
+          <div class="tabs" id="abas" style="border-bottom:none; margin-bottom:0;">
+            <button class="tab active" data-aba="entrada">Caixa de entrada</button>
+            <button class="tab" data-aba="arquivadas">Arquivadas</button>
+            <button class="tab" data-aba="lixeira">Lixeira</button>
+          </div>
+        </div>
+
+        <form class="card mb-4 hidden" id="formEscrever">
+          <label class="check-linha"><input type="checkbox" id="eOculto" /><span style="font-size:13px;">Vários destinatários (cada um recebe a mensagem só para si, ninguém vê os outros)</span></label>
+          <div class="field mt-2" id="campoPara1"><label class="mono-label">Para</label><input type="email" id="ePara" placeholder="cliente@email.com" /></div>
+          <div class="field mt-2 hidden" id="campoParaN"><label class="mono-label">Destinatários (um por linha)</label><textarea id="eParaLista" style="min-height:90px;"></textarea></div>
+          <div class="field"><label class="mono-label">Assunto</label><input type="text" id="eAssunto" maxlength="200" /></div>
+          <div class="field"><label class="mono-label">Mensagem</label><textarea id="eMensagem" maxlength="5000"></textarea></div>
+          <p class="text-muted" id="eResultado" style="font-size:12.5px;"></p>
+          <button type="submit" class="btn btn-primary" id="btnEnviarNovo">Enviar e-mail</button>
+        </form>
+
+        <div id="area"><div class="skeleton skeleton-row"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from '/src/lib/supabaseClient.js';
+    import { handleQueryError, podeFazer } from '/src/lib/session.js';
+    import { initPage } from '/src/lib/pageInit.js';
+    import { formatarData, escapeHtml } from '/src/lib/format.js';
+    import { chamarFunction } from '/src/lib/contratoLinks.js';
+
+    const { perm } = await initPage({ paginaAtual: 'caixa-entrada.html', breadcrumb: 'CRM / E-mail', title: 'E-mail' });
+    const podeCriar = podeFazer(perm, 'email', 'criar');
+    const podeEditar = podeFazer(perm, 'email', 'editar');
+    const podeExcluir = podeFazer(perm, 'email', 'excluir');
+    const CONTATO = 'contato@criativamentedigital.com.br';
+    document.getElementById('dica').textContent = `Mensagens recebidas e enviadas por ${CONTATO}. É um complemento: toda mensagem recebida também continua chegando no seu e-mail pessoal.`;
+    if (!podeCriar) document.getElementById('btnEscrever').classList.add('hidden');
+
+    let mensagens = [];
+    let aba = 'entrada';
+    let selecionada = null;
+    let marcadas = new Set();
+
+    const semRe = (s) => { let v = (s || '').trim(); while (/^re:\s*/i.test(v)) v = v.replace(/^re:\s*/i, '').trim(); return v || '(sem assunto)'; };
+    const contraparte = (m) => (m.direction === 'inbound' ? m.from_email : m.to_email) || 'desconhecido';
+    const bytes = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+
+    async function carregar() {
+      const { data, error } = await supabase.from('emails')
+        .select('id, contato_id, direction, from_email, from_name, to_email, subject, body_text, is_read, replied_at, archived_at, deleted_at, anexos, received_at')
+        .order('received_at', { ascending: false }).limit(400);
+      if (error) { await handleQueryError(error); document.getElementById('area').innerHTML = '<div class="error-state"><p>Não foi possível carregar agora.</p></div>'; return; }
+      mensagens = data || [];
+      desenhar();
+    }
+
+    function conversas() {
+      const mapa = new Map();
+      for (const m of mensagens) {
+        const cp = contraparte(m); const ass = semRe(m.subject); const chave = `${cp}::${ass}`;
+        let t = mapa.get(chave);
+        if (!t) { t = { chave, cp, nome: null, assunto: ass, msgs: [], ultima: m.received_at, naoLida: false, arquivada: true, lixeira: true }; mapa.set(chave, t); }
+        t.msgs.push(m);
+        if (m.direction === 'inbound' && m.from_name) t.nome = m.from_name;
+        if (m.received_at > t.ultima) t.ultima = m.received_at;
+        if (m.direction === 'inbound' && !m.is_read) t.naoLida = true;
+        if (!m.archived_at) t.arquivada = false;
+        if (!m.deleted_at) t.lixeira = false;
+      }
+      const lista = [...mapa.values()];
+      lista.forEach((t) => t.msgs.sort((a, b) => a.received_at.localeCompare(b.received_at)));
+      return lista.sort((a, b) => b.ultima.localeCompare(a.ultima));
+    }
+
+    function daAba(t) {
+      if (aba === 'lixeira') return t.lixeira;
+      if (aba === 'arquivadas') return t.arquivada && !t.lixeira;
+      return !t.arquivada && !t.lixeira;
+    }
+
+    async function aplicar(threads, campo, valor) {
+      const ids = threads.flatMap((t) => t.msgs.map((m) => m.id));
+      if (!ids.length) return;
+      const { error } = await supabase.from('emails').update({ [campo]: valor }).in('id', ids);
+      if (error) { alert('Não foi possível concluir: ' + error.message); return; }
+      marcadas.clear(); selecionada = null;
+      await carregar();
+    }
+    async function excluirDef(threads) {
+      if (!confirm(`Excluir definitivamente ${threads.length} conversa(s)? Não dá para desfazer.`)) return;
+      const ids = threads.flatMap((t) => t.msgs.map((m) => m.id));
+      const { error } = await supabase.from('emails').delete().in('id', ids);
+      if (error) { alert('Não foi possível excluir: ' + error.message); return; }
+      marcadas.clear(); selecionada = null;
+      await carregar();
+    }
+
+    function desenhar() {
+      const todas = conversas();
+      const naoLidas = todas.filter((t) => !t.arquivada && !t.lixeira && t.naoLida).length;
+      const visiveis = todas.filter(daAba);
+      const area = document.getElementById('area');
+      const badge = naoLidas > 0 ? `<span class="mail-badge">${naoLidas}</span>` : '';
+      document.querySelector('[data-aba="entrada"]').innerHTML = `Caixa de entrada${badge}`;
+
+      if (!visiveis.length) {
+        area.innerHTML = `<div class="empty-state"><p>${aba === 'lixeira' ? 'Lixeira vazia.' : aba === 'arquivadas' ? 'Nenhuma conversa arquivada.' : 'Nenhuma mensagem ainda.'}</p></div>`;
+        return;
+      }
+      const sel = visiveis.find((t) => t.chave === selecionada) || null;
+      const acoesLote = (podeEditar || podeExcluir) && marcadas.size > 0 ? `
+        <div class="bulk">
+          <span class="text-muted" style="font-size:12px;">${marcadas.size} selecionada(s)</span>
+          ${aba === 'entrada' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="arquivar">Arquivar</button>' : ''}
+          ${aba === 'arquivadas' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="desarquivar">Desarquivar</button>' : ''}
+          ${aba !== 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-lote="lixeira">Mover para a lixeira</button>' : ''}
+          ${aba === 'lixeira' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-lote="restaurar">Restaurar</button>' : ''}
+          ${aba === 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-lote="excluir" style="color:var(--status-erro);">Excluir definitivamente</button>' : ''}
+        </div>` : '';
+
+      area.innerHTML = `
+        <div class="mail-layout">
+          <div>
+            ${acoesLote}
+            <ul class="mail-list">
+              ${visiveis.map((t) => `
+                <li><div class="mail-item ${t.naoLida ? 'is-unread' : ''} ${t.chave === selecionada ? 'is-selected' : ''}">
+                  <input type="checkbox" data-marca="${escapeHtml(t.chave)}" ${marcadas.has(t.chave) ? 'checked' : ''} aria-label="Selecionar conversa" />
+                  <button class="mail-item-main" data-abrir="${escapeHtml(t.chave)}">
+                    <span class="mail-from">${escapeHtml(t.nome || t.cp)}</span>
+                    <span class="mail-subject">${escapeHtml(t.assunto)}</span>
+                    <span class="mail-meta">${formatarData(t.ultima, true)}${t.msgs.length > 1 ? ` · ${t.msgs.length} mensagens` : ''}</span>
+                  </button>
+                </div></li>`).join('')}
+            </ul>
+          </div>
+          <div class="card" id="detalhe">${sel ? detalhe(sel) : '<p class="text-muted">Selecione uma conversa para ler.</p>'}</div>
+        </div>`;
+
+      area.querySelectorAll('[data-marca]').forEach((el) => el.addEventListener('change', () => { el.checked ? marcadas.add(el.dataset.marca) : marcadas.delete(el.dataset.marca); desenhar(); }));
+      area.querySelectorAll('[data-abrir]').forEach((el) => el.addEventListener('click', () => abrirConversa(el.dataset.abrir)));
+      area.querySelectorAll('[data-lote]').forEach((el) => el.addEventListener('click', () => {
+        const alvo = todas.filter((t) => marcadas.has(t.chave));
+        acaoLote(el.dataset.lote, alvo);
+      }));
+      ligarDetalhe(sel);
+    }
+
+    function acaoLote(acao, alvo) {
+      if (acao === 'arquivar') return aplicar(alvo, 'archived_at', new Date().toISOString());
+      if (acao === 'desarquivar') return aplicar(alvo, 'archived_at', null);
+      if (acao === 'lixeira') return aplicar(alvo, 'deleted_at', new Date().toISOString());
+      if (acao === 'restaurar') return aplicar(alvo, 'deleted_at', null);
+      if (acao === 'excluir') return excluirDef(alvo);
+    }
+
+    function detalhe(t) {
+      const bolhas = t.msgs.map((m) => `
+        <div class="bolha ${m.direction === 'inbound' ? 'in' : 'out'}">
+          <div class="bolha-meta">${m.direction === 'inbound' ? escapeHtml(m.from_name || m.from_email) : 'Você (Criativamente)'} · ${formatarData(m.received_at, true)}</div>
+          ${escapeHtml(m.body_text)}
+          ${(m.anexos || []).map((a, i) => `<div style="margin-top:6px;"><button class="btn-ghost" data-anexo="${m.id}" data-indice="${i}" style="font-size:12px; text-decoration:underline;">📎 ${escapeHtml(a.filename)} (${bytes(a.size)})</button></div>`).join('')}
+        </div>`).join('');
+      const acoes = `
+        <div class="flex gap-2 mb-2" style="flex-wrap:wrap;">
+          ${aba === 'entrada' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="arquivar">Arquivar</button>' : ''}
+          ${aba === 'arquivadas' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="desarquivar">Desarquivar</button>' : ''}
+          ${aba !== 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-uni="lixeira">Mover para a lixeira</button>' : ''}
+          ${aba === 'lixeira' && podeEditar ? '<button class="btn btn-secondary btn-sm" data-uni="restaurar">Restaurar</button>' : ''}
+          ${aba === 'lixeira' && podeExcluir ? '<button class="btn btn-secondary btn-sm" data-uni="excluir" style="color:var(--status-erro);">Excluir definitivamente</button>' : ''}
+        </div>`;
+      const responder = podeCriar && aba !== 'lixeira' ? `
+        <div class="mt-4">
+          <textarea id="rMensagem" maxlength="5000" placeholder="Escreva sua resposta…"></textarea>
+          <p class="text-muted" id="rErro" style="font-size:12.5px; color:var(--status-erro);"></p>
+          <button class="btn btn-primary mt-2" id="btnResponder">Enviar resposta</button>
+        </div>` : '';
+      return `<div class="mb-2"><div style="font-size:16px; font-weight:800;">${escapeHtml(t.assunto)}</div><div class="mail-meta">Com: ${escapeHtml(t.nome ? `${t.nome} <${t.cp}>` : t.cp)}</div></div>${acoes}<div class="thread">${bolhas}</div>${responder}`;
+    }
+
+    async function abrirConversa(chave) {
+      selecionada = chave;
+      const t = conversas().find((x) => x.chave === chave);
+      const naoLidas = t ? t.msgs.filter((m) => m.direction === 'inbound' && !m.is_read).map((m) => m.id) : [];
+      if (naoLidas.length && podeEditar) {
+        await supabase.from('emails').update({ is_read: true }).in('id', naoLidas);
+        mensagens = mensagens.map((m) => (naoLidas.includes(m.id) ? { ...m, is_read: true } : m));
+      }
+      desenhar();
+    }
+
+    function ligarDetalhe(sel) {
+      if (!sel) return;
+      document.querySelectorAll('[data-uni]').forEach((el) => el.addEventListener('click', () => acaoLote(el.dataset.uni, [sel])));
+      document.querySelectorAll('[data-anexo]').forEach((el) => el.addEventListener('click', async () => {
+        try { const r = await chamarFunction('email-anexo', { email_id: el.dataset.anexo, indice: Number(el.dataset.indice) }); window.open(r.url, '_blank'); }
+        catch (e) { alert('Não foi possível abrir o anexo: ' + e.message); }
+      }));
+      const btn = document.getElementById('btnResponder');
+      if (btn) btn.addEventListener('click', async () => {
+        const txt = document.getElementById('rMensagem').value.trim();
+        const erro = document.getElementById('rErro');
+        erro.textContent = '';
+        if (!txt) { erro.textContent = 'Escreva a resposta antes de enviar.'; return; }
+        btn.disabled = true; btn.textContent = 'Enviando…';
+        const ultima = [...sel.msgs].reverse().find((m) => m.direction === 'inbound') || sel.msgs[sel.msgs.length - 1];
+        try {
+          await chamarFunction('email-enviar', { acao: 'responder', email_id: ultima.id, mensagem: txt });
+          await carregar();
+        } catch (e) {
+          erro.textContent = e.body && e.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : 'Não foi possível enviar agora. Tente novamente.';
+          btn.disabled = false; btn.textContent = 'Enviar resposta';
+        }
+      });
+    }
+
+    document.getElementById('abas').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-aba]'); if (!b) return;
+      aba = b.dataset.aba; selecionada = null; marcadas.clear();
+      document.querySelectorAll('#abas .tab').forEach((t) => t.classList.toggle('active', t === b));
+      desenhar();
+    });
+    document.getElementById('btnEscrever').addEventListener('click', () => document.getElementById('formEscrever').classList.toggle('hidden'));
+    document.getElementById('eOculto').addEventListener('change', (e) => {
+      document.getElementById('campoPara1').classList.toggle('hidden', e.target.checked);
+      document.getElementById('campoParaN').classList.toggle('hidden', !e.target.checked);
+    });
+    document.getElementById('formEscrever').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = document.getElementById('eResultado'); res.textContent = ''; res.style.color = '';
+      const multi = document.getElementById('eOculto').checked;
+      const para = multi ? document.getElementById('eParaLista').value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) : [document.getElementById('ePara').value.trim()].filter(Boolean);
+      const assunto = document.getElementById('eAssunto').value.trim();
+      const mensagem = document.getElementById('eMensagem').value.trim();
+      if (!para.length || !assunto || !mensagem) { res.style.color = 'var(--status-erro)'; res.textContent = 'Preencha destinatário, assunto e mensagem.'; return; }
+      const btn = document.getElementById('btnEnviarNovo'); btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        const r = await chamarFunction('email-enviar', { acao: 'novo', para, assunto, mensagem });
+        res.textContent = `Enviado para ${r.enviados} destinatário(s)${r.falhas ? ` (${r.falhas} falharam)` : ''}.`;
+        document.getElementById('eAssunto').value = ''; document.getElementById('eMensagem').value = ''; document.getElementById('ePara').value = ''; document.getElementById('eParaLista').value = '';
+        await carregar();
+      } catch (err) {
+        res.style.color = 'var(--status-erro)';
+        res.textContent = err.body && err.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : (err.body && err.body.error) || 'Não foi possível enviar agora.';
+      }
+      btn.disabled = false; btn.textContent = 'Enviar e-mail';
+    });
+
+    await carregar();
+  </script>
+</body>
+</html>

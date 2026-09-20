@@ -6,7 +6,7 @@
 // ============================================================
 import { supabase, SUPABASE_URL } from './supabaseClient.js';
 
-async function chamarFunction(nome, payload) {
+export async function chamarFunction(nome, payload) {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Sessão expirada — faça login novamente.');
 

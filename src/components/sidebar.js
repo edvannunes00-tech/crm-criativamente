@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: 'Projetos', href: 'projetos.html', modulos: ['projetos'] },
   { label: 'Financeiro', href: 'financeiro.html', modulos: ['financeiro', 'caixa'] },
   { label: 'Recorrências', href: 'recorrencias.html', modulos: ['financeiro', 'contratos'] },
+  { label: 'E-mail', href: 'caixa-entrada.html', modulos: ['email'] },
   { label: 'Gestão', href: 'gestao.html', modulos: ['gestao'] },
   { label: 'Configurações', href: 'configuracoes.html', modulos: ['configuracoes', 'usuarios', 'permissoes'] },
 ];

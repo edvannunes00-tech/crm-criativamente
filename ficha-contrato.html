@@ -45,7 +45,7 @@
     import { initPage } from '/src/lib/pageInit.js';
     import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
     import { gerarPdfContrato, salvarDocumentoContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
-    import { gerarLinkContrato, revogarLinkContrato, abrirLinkContrato } from '/src/lib/contratoLinks.js';
+    import { gerarLinkContrato, revogarLinkContrato, abrirLinkContrato, chamarFunction } from '/src/lib/contratoLinks.js';
     import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento, sugerirCondicaoPorFaixa } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
     import { renderBlocoRecorrencia } from '/src/lib/recorrenciaUi.js';
@@ -789,7 +789,7 @@
                 <td class="cell-muted">${formatarData(l.expires_at, true)}</td>
                 <td>${l.access_count}</td>
                 <td style="white-space:nowrap;">
-                  ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') && l.token_cifrado ? `<button class="btn-ghost" data-abrir-link="${l.id}" style="font-size:12px; text-decoration:underline;">Abrir</button> <button class="btn-ghost" data-copiar-link="${l.id}" style="font-size:12px; text-decoration:underline;">Copiar</button>` : ''}
+                  ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') && l.token_cifrado ? `<button class="btn-ghost" data-abrir-link="${l.id}" style="font-size:12px; text-decoration:underline;">Abrir</button> <button class="btn-ghost" data-copiar-link="${l.id}" style="font-size:12px; text-decoration:underline;">Copiar</button> <button class="btn-ghost" data-email-link="${l.id}" style="font-size:12px; text-decoration:underline;">E-mail</button>` : ''}
                   ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') && !l.token_cifrado ? `<span class="text-muted" style="font-size:11px;" title="Criado antes do recurso de reabrir. Gere um novo link.">sem acesso ao link</span>` : ''}
                   ${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') ? `<button class="btn-ghost" data-revogar="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Revogar</button>` : ''}
                   ${podeAdministrar && (l.status === 'revogado' || l.status === 'expirado') ? `<button class="btn-ghost" data-lixeira-link="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Lixeira</button>` : ''}
@@ -822,6 +822,26 @@
       `;
     }
 
+    async function enviarLinkPorEmail(url, botao) {
+      if (!contato.email) { alert('Este cliente não tem e-mail cadastrado.'); return; }
+      const primeiroNome = (contato.nome || '').split(' ')[0] || contato.nome || '';
+      if (!confirm(`Enviar o link do contrato por e-mail para ${contato.email}?`)) return;
+      const rotulo = botao.textContent; botao.disabled = true; botao.textContent = 'Enviando...';
+      try {
+        await chamarFunction('email-enviar', {
+          acao: 'cta', para: [contato.email], assunto: 'Seu contrato — Criativamente', contato_id: contato.id,
+          mensagem: `Olá, ${primeiroNome}!\n\nConforme conversamos, segue o link para você revisar seus dados e as condições do contrato. Leva poucos minutos.`,
+          cta_label: 'Abrir meu contrato', cta_url: url,
+        });
+        botao.textContent = 'E-mail enviado';
+        await supabase.from('atividades').insert({ empresa_id: empresaId, contrato_id: contratoId, tipo: 'contrato_enviado', titulo: 'Link do contrato enviado por e-mail', usuario_id: usuarioId, metadata: { canal: 'email', destinatario: contato.email } });
+        if (contrato.status === 'rascunho') { await supabase.from('contratos').update({ status: 'enviado' }).eq('id', contratoId); await carregarCabecalho(); }
+      } catch (err) {
+        botao.disabled = false; botao.textContent = rotulo;
+        alert(err.body && err.body.motivo === 'email_nao_configurado' ? 'O envio de e-mail ainda não foi configurado.' : 'Não foi possível enviar o e-mail: ' + err.message);
+      }
+    }
+
     function ligarEventosLink() {
       const btn = document.getElementById('btnGerarLink');
       if (btn) {
@@ -849,6 +869,7 @@
               <div class="link-token-box">${escapeHtml(url)}</div>
               <div class="flex gap-2 mt-2">
                 <button class="btn btn-secondary btn-sm" id="btnCopiarLink">Copiar link</button>
+                <button class="btn btn-secondary btn-sm" id="btnEnviarEmail">Enviar por e-mail</button>
                 ${temWhatsapp
                   ? `<button class="btn btn-secondary btn-sm" id="btnEnviarWhatsapp">Enviar pelo WhatsApp</button>`
                   : `<span class="text-muted" style="font-size:12px; align-self:center;">Cliente sem WhatsApp cadastrado</span>`}
@@ -858,6 +879,7 @@
               navigator.clipboard.writeText(url);
               document.getElementById('btnCopiarLink').textContent = 'Copiado!';
             });
+            document.getElementById('btnEnviarEmail').addEventListener('click', (ev) => enviarLinkPorEmail(url, ev.target));
             const btnWhats = document.getElementById('btnEnviarWhatsapp');
             if (btnWhats) {
               btnWhats.addEventListener('click', async () => {
@@ -902,6 +924,12 @@
         el.addEventListener('click', async () => {
           try { const r = await abrirLinkContrato(el.dataset.copiarLink); await navigator.clipboard.writeText(urlDoToken(r.token)); el.textContent = 'Copiado!'; }
           catch (err) { alert('Não foi possível copiar: ' + err.message); }
+        });
+      });
+      document.querySelectorAll('[data-email-link]').forEach((el) => {
+        el.addEventListener('click', async () => {
+          try { const r = await abrirLinkContrato(el.dataset.emailLink); await enviarLinkPorEmail(urlDoToken(r.token), el); }
+          catch (err) { alert('Não foi possível enviar: ' + err.message); }
         });
       });
       const msgLink = { sem_permissao: 'Somente administradores podem fazer isso.', link_assinado_nao_excluivel: 'Link de contrato assinado não pode ser excluído (histórico).', revogue_antes: 'Revogue o link antes de enviá-lo para a lixeira.', link_com_dados_do_cliente: 'Este link tem dados do cliente e é mantido no histórico; ele permanece na lixeira.' };
