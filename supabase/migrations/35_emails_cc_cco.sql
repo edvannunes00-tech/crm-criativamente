@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration: crm.emails.cc_email e bcc_email (registro de Cc/Cco nos envios).
