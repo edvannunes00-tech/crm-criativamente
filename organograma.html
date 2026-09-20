@@ -13,15 +13,27 @@
     .liga { width: 2px; height: 26px; background: var(--line-strong); }
     .barra { height: 2px; background: var(--line-strong); width: min(94%, 1100px); }
     .filhos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; width: 100%; margin-top: 0; }
-    .chat { border: 1px solid var(--line-strong); border-radius: 14px; padding: 16px; background: var(--near-black); display: flex; flex-direction: column; gap: 8px; position: relative; }
+    .chat { border: 1px solid var(--line-strong); border-radius: 14px; background: var(--near-black); position: relative; }
     .chat.hub { border-color: var(--accent); }
-    .chat .pessoa { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
-    .chat .sugerido { font-size: 14px; font-weight: 800; line-height: 1.25; color: var(--gray-1); }
+    .chat summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 14px; padding: 14px; }
+    .chat summary::-webkit-details-marker { display: none; }
+    .chat summary:hover { background: rgba(255,255,255,.03); border-radius: 14px; }
+    .foto { flex: none; position: relative; width: 64px; height: 64px; border-radius: 50%; overflow: hidden; background: rgba(156,255,25,.14); display: flex; align-items: center; justify-content: center; border: 2px solid var(--line-strong); }
+    .chat.hub .foto { border-color: var(--accent); }
+    .foto img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .foto .ini { font-size: 24px; font-weight: 800; color: var(--accent); }
+    .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+    .chat .papel { font-size: 10.5px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; font-family: var(--font-mono); }
+    .chat .pessoa { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; }
+    .chat .sugerido { font-size: 13px; font-weight: 800; line-height: 1.25; color: var(--gray-1); }
+    .seta { color: var(--gray-2); transition: transform .15s; }
+    .chat[open] .seta { transform: rotate(180deg); }
+    .chat .detalhe { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); margin: 0 14px; padding-top: 12px; }
     .chat .atual { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); }
-    .chat .papel { font-size: 12.5px; color: var(--accent); font-weight: 800; text-transform: uppercase; letter-spacing: .03em; font-family: var(--font-mono); }
-    .chat h4 { margin: 6px 0 2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 400; }
+    .chat h4 { margin: 8px 0 2px; font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .05em; font-weight: 400; }
     .chat ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
     .chat p { margin: 0; font-size: 13px; line-height: 1.55; }
+    .filhos { align-items: start; }
     .conector { display: none; }
     .regras { margin-top: 24px; }
     .regras li { margin-bottom: 6px; }
@@ -34,18 +46,19 @@
     <div class="main-area">
       <div id="headerContainer"></div>
       <div class="page-content">
-        <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:20px;">Mapa dos chats de IA que trabalham para a Criativamente: quem cuida de quê, com o nome sugerido para cada um. O nome atual é o que aparece hoje; renomear ajuda a ninguém invadir a área do outro.</p>
+        <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:12px;">Mapa dos agentes de IA que atuam na Criativamente: responsabilidades, limites e a quem acionar em cada assunto. Cada agente consulta esta página para identificar a própria função e trabalhar dentro dela. Clique em um agente para abrir o escopo.</p>
+        <div class="flex gap-2 mb-4"><button class="btn btn-secondary btn-sm" id="abrirTodos" type="button">Abrir todos</button><button class="btn btn-secondary btn-sm" id="fecharTodos" type="button">Fechar todos</button></div>
 
         <div class="org" id="org"></div>
 
         <div class="card regras">
           <div class="mono-label mb-2">Regras de convivência entre os chats</div>
           <ul style="margin:0; padding-left:18px; font-size:13px; line-height:1.6;">
-            <li><strong>Decisão é sempre sua.</strong> Nenhum chat envia contrato, mensagem a cliente ou e-mail sem o seu OK, e nenhum mexe em preço, cobrança ou contas externas sozinho.</li>
-            <li><strong>Cada chat mexe só no que é seu.</strong> Se precisar de algo da área de outro, pede pelo chat responsável (troca de mensagens entre sessões) em vez de alterar por conta própria.</li>
-            <li><strong>O CRM é a fonte da verdade</strong> de clientes, contratos, cobranças e e-mails. Os outros leem e escrevem nele só pelos caminhos combinados.</li>
-            <li><strong>Segredos ficam fora dos chats:</strong> chaves e senhas entram por script no terminal, nunca coladas na conversa.</li>
-            <li><strong>Um chat por assunto:</strong> quando um assunto cresce e vira outro produto, abre-se um chat novo com nome e escopo próprios e ele entra neste organograma.</li>
+            <li><strong>A decisão final é da gestão.</strong> Nenhum agente envia contrato, mensagem a cliente ou e-mail sem aprovação da gestão, e nenhum altera preço, cobrança ou contas externas por conta própria.</li>
+            <li><strong>Cada agente atua somente na própria área.</strong> Quando precisar de algo da área de outro agente, solicita ao responsável (troca de mensagens entre sessões) em vez de alterar diretamente.</li>
+            <li><strong>O CRM é a fonte da verdade</strong> de clientes, contratos, cobranças e e-mails. Os demais agentes leem e escrevem nele apenas pelos caminhos combinados.</li>
+            <li><strong>Segredos ficam fora das conversas:</strong> chaves e senhas são inseridas por script no terminal e nunca coladas em chats.</li>
+            <li><strong>Um agente por assunto:</strong> quando um assunto cresce e vira outro produto, cria-se um novo agente com nome e escopo próprios, registrado neste organograma.</li>
           </ul>
         </div>
       </div>
@@ -60,48 +73,56 @@
 
     const CHATS = [
       {
-        hub: true, pessoa: 'Claudio', sugerido: 'CRM — Central', atual: 'scratch-2026-09-16 (este chat)', papel: 'Núcleo: dados e cobrança',
+        hub: true, pessoa: 'Claudio', slug: 'claudio', sessao: 'Claudio (CRM)', sugerido: 'CRM — Central', atual: 'sessão scratch-2026-09-16', papel: 'Núcleo: dados e cobrança',
         escopo: ['CRM (crm.criativamentedigital.com.br) e banco Supabase', 'Contratos: minuta, link público, assinatura, PDF, cópia e segunda via', 'Pagamento recorrente (Mercado Pago) e webhook', 'E-mail contato@ (Resend + Cloudflare) e caixa de entrada', 'Permissões, catálogo de produtos e preços'],
-        naoFaz: ['Criar o conteúdo dos sites', 'Prospecção e conversas de WhatsApp', 'Desenvolver o produto CriativaBio'],
+        naoFaz: ['Criar o conteúdo dos sites', 'Conduzir prospecção e conversas de WhatsApp', 'Desenvolver o produto CriativaBio', 'Enviar contrato ou e-mail a cliente sem aprovação da gestão'],
         acionar: 'Qualquer coisa que envolva cliente, contrato, cobrança, e-mail ou o banco do CRM.',
       },
       {
-        pessoa: 'Roberta', sugerido: 'WhatsApp — Atendimento e Ofertas', atual: 'Claude Whatsapp', papel: 'Comunicação e prospecção',
+        pessoa: 'Roberta', slug: 'roberta', sessao: 'Roberta (WhatsApp)', sugerido: 'WhatsApp — Atendimento e Ofertas', atual: 'Claude Whatsapp', papel: 'Comunicação e prospecção',
         escopo: ['Conversas de WhatsApp com clientes e leads (com portão de aprovação)', 'Rascunhos de proposta e contrato a partir das conversas', 'PromoWhats: mineração e publicação de ofertas de afiliados (Mercado Livre e Shopee)', 'Integração WhatsApp → CRM'],
-        naoFaz: ['Enviar mensagem sem sua aprovação', 'Alterar contrato já enviado ou assinado', 'Mexer em cobrança'],
+        naoFaz: ['Enviar mensagem sem aprovação da gestão (decisor final)', 'Alterar contrato já enviado ou assinado', 'Alterar cobrança'],
         acionar: 'Falar com cliente, montar proposta a partir de uma conversa, rodar ou ajustar as ofertas de afiliados.',
       },
       {
-        pessoa: 'Diego', sugerido: 'Sites — Estúdio', atual: 'Criação de sites', papel: 'Produção de sites e landing pages',
+        pessoa: 'Diego', slug: 'diego', sessao: 'Diego (Sites)', sugerido: 'Sites — Estúdio', atual: 'Criação de sites', papel: 'Produção de sites e landing pages',
         escopo: ['Site institucional da Criativamente e template de site de cliente', 'Landing pages e sites (planos Gerenciado e Próprio)', 'Publicação (Cloudflare e GitHub), domínios e entrega ao cliente', 'Manutenção e suporte dos sites contratados'],
-        naoFaz: ['Definir preço ou texto do contrato', 'Cobrar mensalidade', 'Publicar site sem o pagamento/assinatura previstos'],
+        naoFaz: ['Definir preço ou texto do contrato', 'Cobrar mensalidade', 'Publicar site sem o pagamento e a assinatura previstos'],
         acionar: 'Criar, publicar, ajustar ou transferir um site ou landing page.',
       },
       {
-        pessoa: 'Mia', sugerido: 'CriativaBio — Produto', atual: 'CriativaBio', papel: 'Produto próprio (SaaS)',
+        pessoa: 'Mia', slug: 'mia', sessao: 'Mia (CriativaBio)', sugerido: 'CriativaBio — Produto', atual: 'CriativaBio', papel: 'Produto próprio (SaaS)',
         escopo: ['Plataforma de link na bio (app, API, painel administrativo)', 'Cobrança do produto (Mercado Pago, conta própria da aplicação)', 'E-mails do produto (Resend, domínio criativabio.com.br)', 'Suporte e caixa de entrada do CriativaBio'],
         naoFaz: ['Mexer em contratos e clientes do CRM', 'Alterar o banco do CRM'],
         acionar: 'Qualquer evolução, bug ou dúvida do CriativaBio.',
       },
       {
-        pessoa: 'Caio', sugerido: 'AutoCut — Edição de Vídeo', atual: 'AutoCut', papel: 'Produção de conteúdo em vídeo',
+        pessoa: 'Caio', slug: 'caio', sessao: 'Caio (AutoCut)', sugerido: 'AutoCut — Edição de Vídeo', atual: 'AutoCut', papel: 'Produção de conteúdo em vídeo',
         escopo: ['Corte e edição automática das aulas gravadas (Criativamente Editor)', 'Fila de vídeos dos cursos em produção', 'Padronização de vinheta, legenda e exportação'],
-        naoFaz: ['Prazos e valores de contrato', 'Enviar material ao cliente sem sua revisão'],
+        naoFaz: ['Definir prazos e valores de contrato', 'Enviar material ao cliente sem revisão e aprovação da gestão'],
         acionar: 'Editar as aulas de um curso contratado ou melhorar o editor.',
       },
     ];
 
     const lista = (itens) => `<ul>${itens.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
     const card = (c) => `
-      <div class="chat ${c.hub ? 'hub' : ''}">
-        <span class="papel">${escapeHtml(c.papel)}</span>
-        <div class="pessoa">${escapeHtml(c.pessoa)}</div>
-        <div class="sugerido">${escapeHtml(c.sugerido)}</div>
-        <div class="atual">hoje: ${escapeHtml(c.atual)}</div>
-        <h4>Escopo</h4>${lista(c.escopo)}
-        <h4>Não faz</h4>${lista(c.naoFaz)}
-        <h4>Acionar quando</h4><p>${escapeHtml(c.acionar)}</p>
-      </div>`;
+      <details class="chat ${c.hub ? 'hub' : ''}">
+        <summary>
+          <span class="foto"><img src="/equipe/${c.slug}.jpg" alt="${escapeHtml(c.pessoa)}" onerror="this.remove()" /><span class="ini">${escapeHtml(c.pessoa.charAt(0))}</span></span>
+          <span class="txt">
+            <span class="papel">${escapeHtml(c.papel)}</span>
+            <span class="pessoa">${escapeHtml(c.pessoa)}</span>
+            <span class="sugerido">${escapeHtml(c.sugerido)}</span>
+          </span>
+          <span class="seta" aria-hidden="true">▾</span>
+        </summary>
+        <div class="detalhe">
+          <div class="atual">Nome da sessão: ${escapeHtml(c.sessao)} · hoje: ${escapeHtml(c.atual)}</div>
+          <h4>Escopo</h4>${lista(c.escopo)}
+          <h4>Não faz</h4>${lista(c.naoFaz)}
+          <h4>Acionar quando</h4><p>${escapeHtml(c.acionar)}</p>
+        </div>
+      </details>`;
 
     const [hub, ...demais] = CHATS;
     document.getElementById('org').innerHTML = `
@@ -112,6 +133,9 @@
       <div class="barra"></div>
       <div class="liga" style="height:14px;"></div>
       <div class="filhos">${demais.map(card).join('')}</div>`;
+    const setAbertos = (v) => document.querySelectorAll('.chat').forEach((d) => { d.open = v; });
+    document.getElementById('abrirTodos').addEventListener('click', () => setAbertos(true));
+    document.getElementById('fecharTodos').addEventListener('click', () => setAbertos(false));
   </script>
 </body>
 </html>
