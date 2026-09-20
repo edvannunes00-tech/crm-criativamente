@@ -101,11 +101,6 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
     const total = doc.getNumberOfPages();
     const larguraPagina = doc.internal.pageSize.getWidth();
     const alturaPagina = doc.internal.pageSize.getHeight();
-    const linhasRodape = [
-      [ctx.contratanteEmpresa, contratadaDocumento ? `${rotuloDocumento(contratadaDocumento)} ${contratadaDocumento}` : null].filter(Boolean).join('  ·  '),
-      contratadaEndereco || null,
-    ].filter(Boolean);
-
     for (let i = 1; i <= total; i++) {
       doc.setPage(i);
 
@@ -162,7 +157,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
       doc.line(margem, alturaPagina - 58, larguraPagina - margem, alturaPagina - 58);
       doc.setFontSize(7.5);
       doc.setTextColor(120);
-      linhasRodape.forEach((linha, idx) => doc.text(linha, margem, alturaPagina - 45 + idx * 10));
+      doc.text(`Contrato nº ${codigoContrato}`, margem, alturaPagina - 45);
       doc.text(`Página ${i} de ${total}`, larguraPagina - margem, alturaPagina - 45, { align: 'right' });
       doc.setTextColor(0);
     }
@@ -246,82 +241,60 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
     novaLinha(6);
   });
 
-  novaLinha(24);
+  // ---- Assinaturas: lado a lado, sempre juntas na mesma página ----
+  const alturaBloco = 190;
+  if (y + 24 + alturaBloco > doc.internal.pageSize.getHeight() - rodapeReservado) {
+    doc.addPage();
+    y = topoConteudo;
+  } else {
+    novaLinha(24);
+  }
   titulo('ASSINATURAS', 12);
   novaLinha(4);
 
-  // ---- Bloco CONTRATADA (empresa dona do contrato) ----
-  // Nao ha captura de assinatura da contratada neste fluxo (so o cliente
-  // assina, pela pagina publica) -- fica so a linha em branco pra
-  // assinatura fisica/posterior, mas com identificacao completa.
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('CONTRATADA', margem, y);
-  novaLinha(16);
-  let assinouContratada = false;
-  if (contratadaAssinaturaDataUrl) {
-    try {
-      doc.addImage(contratadaAssinaturaDataUrl, 'PNG', margem, y, 180, 60);
-      novaLinha(64);
-      assinouContratada = true;
-    } catch { /* cai na linha em branco */ }
-  }
-  if (!assinouContratada) {
-    doc.text('_________________________________________', margem, y);
-    novaLinha(14);
-  } else {
-    doc.setFontSize(8);
-    doc.setTextColor(90);
-    doc.text(`Assinado eletronicamente em ${formatarData(contratadaAssinadaEm || new Date().toISOString(), true)}`, margem, y);
-    doc.setTextColor(0);
+  const colLarg = (largura - 28) / 2;
+  const xEsq = margem;
+  const xDir = margem + colLarg + 28;
+  const yTopo = y;
+
+  // Desenha uma coluna de assinatura e devolve o Y final. dataUrl/quandoIso opcionais.
+  function colunaAssinatura(x, rotulo, dataUrl, quandoIso, nome, docTexto) {
+    let yy = yTopo;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    novaLinha(14);
-  }
-  doc.setFont('helvetica', 'bold');
-  doc.text(ctx.contratanteEmpresa, margem, y);
-  novaLinha(13);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`${rotuloDocumento(contratadaDocumento)}: ${contratadaDocumento || 'não informado'}`, margem, y);
-  doc.setFontSize(10);
-  novaLinha(30);
-
-  // ---- Bloco CONTRATANTE (cliente que preencheu/confirmou/assinou) ----
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('CONTRATANTE', margem, y);
-  novaLinha(16);
-
-  if (assinatura?.dataUrl) {
-    // Assinatura capturada na pagina publica (mouse/touch) -- evidencia
-    // de aceite dentro do fluxo, nao uma assinatura eletronica qualificada.
-    // O aviso disso fica no relatorio de implementacao, nao aqui no PDF.
-    try {
-      doc.addImage(assinatura.dataUrl, 'PNG', margem, y, 180, 60);
-      novaLinha(64);
-    } catch {
-      doc.text('_________________________________________', margem, y);
-      novaLinha(14);
+    doc.setTextColor(0);
+    doc.text(rotulo, x, yy);
+    yy += 12;
+    let assinou = false;
+    if (dataUrl) {
+      try { doc.addImage(dataUrl, 'PNG', x, yy, 170, 56); assinou = true; } catch { /* cai na linha em branco */ }
     }
-    if (assinatura.confirmadoEm) {
+    yy += 60;
+    if (!assinou) {
+      doc.setDrawColor(60);
+      doc.setLineWidth(0.6);
+      doc.line(x, yy - 4, x + colLarg - 10, yy - 4);
+    }
+    if (assinou && quandoIso) {
       doc.setFontSize(8);
       doc.setTextColor(90);
-      doc.text(`Assinado eletronicamente em ${formatarData(assinatura.confirmadoEm, true)}`, margem, y);
+      doc.text(`Assinado eletronicamente em ${formatarData(quandoIso, true)}`, x, yy + 6);
       doc.setTextColor(0);
-      doc.setFontSize(10);
-      novaLinha(14);
+      yy += 12;
     }
-  } else {
-    doc.text('_________________________________________', margem, y);
-    novaLinha(14);
+    yy += 12;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    quebrarLinhas(doc, nome, colLarg - 6).forEach((linha) => { doc.text(linha, x, yy); yy += 12; });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(docTexto, x, yy + 1);
+    return yy + 14;
   }
-  doc.setFont('helvetica', 'bold');
-  doc.text(clienteIdentificacao, margem, y);
-  novaLinha(13);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`${rotuloDocumento(clienteCpfCnpj)}: ${clienteCpfCnpj}`, margem, y);
-  doc.setFontSize(10);
+
+  const yFimEsq = colunaAssinatura(xEsq, 'CONTRATADA', contratadaAssinaturaDataUrl, contratadaAssinadaEm, ctx.contratanteEmpresa, `${rotuloDocumento(contratadaDocumento)}: ${contratadaDocumento || 'não informado'}`);
+  const yFimDir = colunaAssinatura(xDir, 'CONTRATANTE', assinatura?.dataUrl, assinatura?.confirmadoEm, clienteIdentificacao, `${rotuloDocumento(clienteCpfCnpj)}: ${clienteCpfCnpj}`);
+  y = Math.max(yFimEsq, yFimDir);
 
   aplicarPapelTimbrado();
   return doc.output('blob');

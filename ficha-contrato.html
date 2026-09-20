@@ -45,7 +45,7 @@
     import { initPage } from '/src/lib/pageInit.js';
     import { formatarMoeda, formatarData, escapeHtml } from '/src/lib/format.js';
     import { gerarPdfContrato, salvarDocumentoContrato, carregarLogoDataUrl } from '/src/lib/contratoPdf.js';
-    import { gerarLinkContrato, revogarLinkContrato, abrirLinkContrato, chamarFunction } from '/src/lib/contratoLinks.js';
+    import { gerarLinkContrato, revogarLinkContrato, abrirLinkContrato, chamarFunction, assinarContratadaContrato } from '/src/lib/contratoLinks.js';
     import { CONDICOES_PAGAMENTO, PERCENTUAIS_ENTRADA_PRESET, FORMAS_PAGAMENTO, PERIODICIDADES, montarResumoCondicaoPagamento, sugerirCondicaoPorFaixa } from '/src/lib/condicoesPagamento.js';
     import { mascararTelefone, whatsappLink } from '/src/lib/format.js';
     import { renderBlocoRecorrencia } from '/src/lib/recorrenciaUi.js';
@@ -505,7 +505,7 @@
             <div class="mt-2">
               ${contrato.contratada_assinada_em
                 ? `<p class="text-muted" style="font-size:12px; line-height:1.5; margin-bottom:8px;">✓ A assinatura da contratada foi registrada neste contrato em ${formatarData(contrato.contratada_assinada_em, true)} (ao gerar o link) e não muda neste contrato. O que você editar aqui vale só para novos contratos.</p>`
-                : `<p class="text-muted" style="font-size:12px; line-height:1.5; margin-bottom:8px;">A assinatura fica registrada no contrato quando você gera o link público. Fica salva para os próximos contratos.</p>`}
+                : `<p class="text-muted" style="font-size:12px; line-height:1.5; margin-bottom:8px;">A assinatura fica registrada no contrato quando você gera o link público. Fica salva para os próximos contratos. Em um contrato que já tem link, você pode registrá-la agora: <button class="btn-ghost" id="btnRegistrarAssinaturaContratada" type="button" style="font-size:12px; text-decoration:underline;">Registrar minha assinatura neste contrato</button></p>`}
               <div class="flex items-center justify-between mb-2">
                 <span class="text-muted" style="font-size:11.5px;">Usa os últimos dados salvos. Clique em Editar para alterar (ex.: novo CNPJ ou assinatura).</span>
                 <button class="btn btn-secondary btn-sm" id="ctEditar" type="button">Editar</button>
@@ -605,6 +605,12 @@
           }, { once: true });
         })();
 
+        const btnReg = document.getElementById('btnRegistrarAssinaturaContratada');
+        if (btnReg) btnReg.addEventListener('click', async () => {
+          if (!confirm('Registrar sua assinatura (com data e hora de agora) neste contrato? Depois de registrada, ela não muda neste contrato.')) return;
+          try { await assinarContratadaContrato(contratoId); await carregarCabecalho(); await abrirAba('documento'); }
+          catch (err) { alert(err.message); }
+        });
         const alternarEdicao = (editando) => {
           ctEditando = editando;
           ctIds.forEach((id) => { document.getElementById(id).disabled = !editando; });

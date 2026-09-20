@@ -43,3 +43,7 @@ export async function cancelarRecorrencia(assinaturaId, motivo) {
 export async function abrirLinkContrato(linkId) {
   return chamarFunction('contrato-abrir-link', { link_id: linkId });
 }
+
+export async function assinarContratadaContrato(contratoId) {
+  return chamarFunction('contrato-assinar-contratada', { contrato_id: contratoId });
+}
