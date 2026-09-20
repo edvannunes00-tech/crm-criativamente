@@ -12,6 +12,18 @@ if ! $SB projects list >/dev/null 2>&1; then
   $SB login
 fi
 
+if [ "${1:-}" = "--webhook" ]; then
+  read -r -s -p "Chave secreta do webhook (não aparece ao digitar): " WH; echo
+  WH="$(printf '%s' "${WH}" | tr -d '[:space:]')"
+  if [ -z "${WH}" ]; then echo "Chave vazia. Nada foi salvo."; exit 1; fi
+  echo "Tamanho da chave: ${#WH} caracteres."
+  $SB secrets set --project-ref "$REF" "MERCADO_PAGO_WEBHOOK_SECRET=${WH}"
+  unset WH
+  echo; $SB secrets list --project-ref "$REF" | grep -i "MERCADO_PAGO" || true
+  echo "Pronto. Avise o Claude que terminou."
+  exit 0
+fi
+
 read -r -s -p "Access Token do Mercado Pago (use o de TESTE primeiro; não aparece ao digitar): " MP_TOKEN; echo
 # tira espaços/quebras de linha que vêm junto ao colar
 MP_TOKEN="$(printf '%s' "${MP_TOKEN}" | tr -d '[:space:]')"
