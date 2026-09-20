@@ -474,7 +474,7 @@
       const lista = (versoes || []).filter((v) => !v.excluido_em);
       const lixeiraVersoes = (versoes || []).filter((v) => v.excluido_em);
       const { data: jaAssinou } = await supabase.from('contrato_dados_cliente').select('id').eq('contrato_id', contratoId).not('assinatura_confirmada_em', 'is', null).limit(1).maybeSingle();
-      const podeExcluirVersao = podeAdministrar && ['rascunho', 'enviado', 'aguardando_assinatura'].includes(contrato.status);
+      const podeExcluirVersao = podeAdministrar;
       const atual = lista[0]; // ja vem ordenado desc por versao
 
       const versoesHtml = lista.length === 0
@@ -489,7 +489,7 @@
                 <td class="cell-muted">${formatarData(v.created_at)}</td>
                 <td>
                   <button class="btn-ghost" data-baixar="${v.documentos ? v.documentos.storage_path : ''}" style="font-size:12px; text-decoration:underline;">Abrir</button>
-                  ${podeExcluirVersao && !(v.documentos && v.documentos.categoria_documento === 'assinado') ? `<button class="btn-ghost" data-excluir-versao="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline;">Ocultar</button>` : ''}
+                  ${podeExcluirVersao ? `<button class="btn-ghost" data-excluir-versao="${v.id}" data-versao-num="${v.versao}" style="font-size:12px; text-decoration:underline;">Ocultar</button>` : ''}
                 </td>
               </tr>
             `).join('')}
