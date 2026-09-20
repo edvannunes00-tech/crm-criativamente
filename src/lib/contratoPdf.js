@@ -11,7 +11,7 @@
 // ============================================================
 import { supabase } from './supabaseClient.js';
 import { formatarMoeda, formatarData } from './format.js';
-import { clausulasDoContrato, montarContextoJuridico } from './contratoTexto.js';
+import { clausulasDoContrato, montarContextoJuridico, MINUTA_VERSAO } from './contratoTexto.js';
 
 function quebrarLinhas(doc, texto, larguraMax) {
   return doc.splitTextToSize(texto, larguraMax);
@@ -157,7 +157,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
       doc.line(margem, alturaPagina - 58, larguraPagina - margem, alturaPagina - 58);
       doc.setFontSize(7.5);
       doc.setTextColor(120);
-      doc.text(`Contrato nº ${codigoContrato}`, margem, alturaPagina - 45);
+      doc.text(`Contrato nº ${codigoContrato}  ·  Minuta ${MINUTA_VERSAO}`, margem, alturaPagina - 45);
       doc.text(`Página ${i} de ${total}`, larguraPagina - margem, alturaPagina - 45, { align: 'right' });
       doc.setTextColor(0);
     }
@@ -309,6 +309,7 @@ export function gerarPdfContrato({ contrato, itens, bonus, empresaNome, contrata
 // Faz upload do PDF e registra documento + nova versao do contrato.
 // categoria: 'original' (gerado pelo sistema) ou 'assinado' (upload manual).
 export async function salvarDocumentoContrato({ empresaId, contratoId, blob, categoria, nomeArquivo, usuarioId, motivoSubstituicao }) {
+  const minutaVersao = MINUTA_VERSAO;
   const storagePath = `${empresaId}/contratos/${contratoId}/${Date.now()}-${nomeArquivo}`;
 
   const { error: uploadError } = await supabase.storage
@@ -347,6 +348,7 @@ export async function salvarDocumentoContrato({ empresaId, contratoId, blob, cat
     versao: novaVersao,
     documento_id: documento.id,
     motivo_substituicao: motivoSubstituicao || null,
+    minuta_versao: minutaVersao,
     criado_por: usuarioId,
   });
   if (versaoError) throw new Error(`Falha ao registrar a versão do contrato: ${versaoError.message}`);

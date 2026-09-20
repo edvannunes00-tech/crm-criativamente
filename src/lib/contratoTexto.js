@@ -84,6 +84,10 @@ export function montarTextoEscopo(itens, suporteInicio = 'entrega') {
   }).join('\n\n');
 }
 
+// Versao da minuta padrao (texto das clausulas). Muda sempre que uma clausula for alterada; aparece no rodape
+// do PDF e e gravada em cada versao de documento gerada, para rastrear qual texto foi usado.
+export const MINUTA_VERSAO = '2026-09-20.1';
+
 export const CLAUSULAS = [
   {
     titulo: 'CLÁUSULA 1ª — DAS PARTES',
@@ -103,7 +107,7 @@ export const CLAUSULAS = [
   },
   {
     titulo: 'CLÁUSULA 3ª — DO QUADRO COMERCIAL',
-    texto: () => `As condições comerciais específicas desta contratação — incluindo preço de tabela, valor efetivamente negociado, desconto concedido, forma e condições de pagamento, bônus e eventuais condições especiais — estão descritas no Quadro Comercial anexo, que reflete exatamente o que foi acordado entre as partes no momento da formalização deste contrato e que prevalece, para todos os efeitos, sobre o preço de tabela vigente no catálogo da CONTRATADA em qualquer outro momento.`,
+    texto: () => `As condições comerciais específicas desta contratação — incluindo preço de tabela, valor efetivamente negociado, desconto concedido, forma e condições de pagamento, bônus e eventuais condições especiais — estão descritas no Quadro Comercial anexo, que reflete exatamente o que foi acordado entre as partes no momento da formalização deste contrato e que prevalece, para todos os efeitos, sobre o preço de tabela vigente no catálogo da CONTRATADA em qualquer outro momento. As condições especiais registradas no Quadro Comercial prevalecem sobre as cláusulas padrão deste contrato em caso de conflito, ressalvadas as normas legais de ordem pública e os direitos do CONTRATANTE previstos na legislação de defesa do consumidor.`,
   },
   {
     titulo: 'CLÁUSULA 4ª — DAS OBRIGAÇÕES DA CONTRATADA',

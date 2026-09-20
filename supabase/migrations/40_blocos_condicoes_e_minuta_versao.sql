@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration: crm.blocos_condicoes (blocos prontos de condicoes especiais, RLS: ler=contratos/visualizar, editar=contratos/administrar; 7 blocos iniciais) e contratos_versoes.minuta_versao.

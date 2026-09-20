@@ -39,6 +39,7 @@
           <button class="tab" data-tab="usuarios">Usuários</button>
           <button class="tab" data-tab="permissoes">Permissões</button>
           <button class="tab" data-tab="financeiro">Financeiro</button>
+          <button class="tab" data-tab="condicoes">Condições</button>
           <button class="tab" data-tab="dados">Importar/Exportar</button>
         </div>
 
@@ -909,8 +910,87 @@
     }
 
     // ============================================================
-    const abas = { produtos: abaProdutos, templates: abaTemplates, usuarios: abaUsuarios, permissoes: abaPermissoes, financeiro: abaFinanceiroConfig, dados: abaDados };
-    const interacoes = { produtos: ativarInteracoesProdutos, templates: ativarInteracoesTemplates, usuarios: ativarInteracoesUsuarios, permissoes: ativarInteracoesPermissoes, financeiro: ativarInteracoesFinanceiroConfig, dados: ativarInteracoesDados };
+    // ABA: CONDICOES (blocos prontos de condicoes especiais dos contratos)
+    // ============================================================
+    async function abaCondicoes() {
+      const { data, error } = await supabase.from('blocos_condicoes').select('*').eq('empresa_id', empresaId).order('ordem');
+      if (error) { if (await handleQueryError(error)) return ''; return `<div class="error-state"><p>Não foi possível carregar os blocos agora.</p></div>`; }
+      const lista = data || [];
+      return `
+        <div class="card mb-4">
+          <div class="mono-label mb-2">Blocos de condições especiais</div>
+          <p class="text-muted" style="font-size:12.5px; line-height:1.6;">Textos prontos que você insere no contrato (aba Comercial → Condições especiais). Assim as condições repetidas ficam iguais entre clientes. O texto das cláusulas do contrato-base é o mesmo para todos.</p>
+        </div>
+        ${lista.map((b, i) => `
+          <div class="card mb-4" data-bloco="${b.id}">
+            <div class="flex gap-2 mb-2" style="flex-wrap:wrap; align-items:center;">
+              <input type="text" class="blTitulo" value="${escapeHtml(b.titulo)}" maxlength="120" style="flex:1; min-width:200px;" />
+              <label class="check-linha" style="margin:0;"><input type="checkbox" class="blAtivo" ${b.ativo ? 'checked' : ''} /> <span style="font-size:12.5px;">Ativo</span></label>
+              <button class="btn btn-secondary btn-sm blSobe" ${i === 0 ? 'disabled' : ''} title="Subir">▲</button>
+              <button class="btn btn-secondary btn-sm blDesce" ${i === lista.length - 1 ? 'disabled' : ''} title="Descer">▼</button>
+            </div>
+            <textarea class="blTexto" rows="4" maxlength="4000">${escapeHtml(b.texto)}</textarea>
+            <div class="flex gap-2 mt-2"><button class="btn btn-primary btn-sm blSalvar">Salvar</button><button class="btn btn-secondary btn-sm blExcluir" style="color:var(--status-erro);">Excluir</button></div>
+          </div>`).join('') || '<div class="empty-state"><p>Nenhum bloco ainda.</p></div>'}
+        <div class="card">
+          <div class="mono-label mb-2">Novo bloco</div>
+          <div class="field"><label class="mono-label">Título (aparece em maiúsculas no contrato)</label><input type="text" id="nbTitulo" maxlength="120" placeholder="Ex.: PRAZO DE ENTREGA" /></div>
+          <div class="field"><label class="mono-label">Texto</label><textarea id="nbTexto" rows="4" maxlength="4000" placeholder="Ex.: entrega em até 30 dias corridos, contados da ..."></textarea></div>
+          <p class="text-muted" id="nbErro" style="font-size:12.5px; color:var(--status-erro);"></p>
+          <button class="btn btn-primary btn-sm" id="nbSalvar">Adicionar bloco</button>
+        </div>`;
+    }
+
+    function ativarInteracoesCondicoes(container) {
+      const recarregar = () => abrirAba('condicoes');
+      const erroMsg = (e) => alert('Não foi possível salvar: ' + (e.message || e));
+      container.querySelectorAll('[data-bloco]').forEach((card) => {
+        const id = card.dataset.bloco;
+        card.querySelector('.blSalvar').addEventListener('click', async () => {
+          const titulo = card.querySelector('.blTitulo').value.trim().toUpperCase();
+          const texto = card.querySelector('.blTexto').value.trim();
+          if (titulo.length < 2 || texto.length < 5) { alert('Preencha o título e o texto do bloco.'); return; }
+          const { error } = await supabase.from('blocos_condicoes').update({ titulo, texto, ativo: card.querySelector('.blAtivo').checked, updated_at: new Date().toISOString() }).eq('id', id);
+          if (error) { erroMsg(error); return; }
+          await recarregar();
+        });
+        card.querySelector('.blExcluir').addEventListener('click', async () => {
+          if (!confirm('Excluir este bloco? Contratos que já usaram o texto não mudam.')) return;
+          const { error } = await supabase.from('blocos_condicoes').delete().eq('id', id);
+          if (error) { erroMsg(error); return; }
+          await recarregar();
+        });
+        const mover = async (delta) => {
+          const cards = [...container.querySelectorAll('[data-bloco]')];
+          const i = cards.indexOf(card); const j = i + delta;
+          if (j < 0 || j >= cards.length) return;
+          const outro = cards[j].dataset.bloco;
+          const { data: par } = await supabase.from('blocos_condicoes').select('id, ordem').in('id', [id, outro]);
+          const a = par.find((x) => x.id === id); const b = par.find((x) => x.id === outro);
+          const ordemA = a.ordem === b.ordem ? (delta > 0 ? b.ordem + 1 : b.ordem - 1) : b.ordem;
+          await supabase.from('blocos_condicoes').update({ ordem: ordemA }).eq('id', id);
+          if (a.ordem !== b.ordem) await supabase.from('blocos_condicoes').update({ ordem: a.ordem }).eq('id', outro);
+          await recarregar();
+        };
+        card.querySelector('.blSobe').addEventListener('click', () => mover(-1));
+        card.querySelector('.blDesce').addEventListener('click', () => mover(1));
+      });
+      container.querySelector('#nbSalvar').addEventListener('click', async () => {
+        const titulo = document.getElementById('nbTitulo').value.trim().toUpperCase();
+        const texto = document.getElementById('nbTexto').value.trim();
+        const erro = document.getElementById('nbErro');
+        erro.textContent = '';
+        if (titulo.length < 2 || texto.length < 5) { erro.textContent = 'Preencha o título e o texto.'; return; }
+        const { data: ult } = await supabase.from('blocos_condicoes').select('ordem').eq('empresa_id', empresaId).order('ordem', { ascending: false }).limit(1).maybeSingle();
+        const { error } = await supabase.from('blocos_condicoes').insert({ empresa_id: empresaId, titulo, texto, ordem: (ult?.ordem || 0) + 1 });
+        if (error) { erro.textContent = 'Não foi possível salvar: ' + error.message; return; }
+        await recarregar();
+      });
+    }
+
+    // ============================================================
+    const abas = { produtos: abaProdutos, templates: abaTemplates, usuarios: abaUsuarios, permissoes: abaPermissoes, financeiro: abaFinanceiroConfig, condicoes: abaCondicoes, dados: abaDados };
+    const interacoes = { produtos: ativarInteracoesProdutos, templates: ativarInteracoesTemplates, usuarios: ativarInteracoesUsuarios, permissoes: ativarInteracoesPermissoes, financeiro: ativarInteracoesFinanceiroConfig, condicoes: ativarInteracoesCondicoes, dados: ativarInteracoesDados };
 
     async function abrirAba(nome) {
       document.querySelectorAll('#tabsNav .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === nome));

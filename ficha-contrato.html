@@ -184,12 +184,15 @@
     }
 
     // ==================== ABA COMERCIAL ====================
+    let blocosCondicoes = [];
     async function abaComercial() {
-      const [{ data: itens }, { data: bonusLista }, { data: produtos }] = await Promise.all([
+      const [{ data: itens }, { data: bonusLista }, { data: produtos }, { data: blocos }] = await Promise.all([
         supabase.from('contrato_itens').select('*, produtos_servicos(nome)').eq('contrato_id', contratoId).order('created_at'),
         supabase.from('contrato_bonus').select('*').eq('contrato_id', contratoId).order('created_at'),
         supabase.from('produtos_servicos').select('id, nome, preco_padrao').eq('empresa_id', empresaId).eq('ativo', true).order('nome'),
+        supabase.from('blocos_condicoes').select('id, titulo, texto').eq('empresa_id', empresaId).eq('ativo', true).order('ordem'),
       ]);
+      blocosCondicoes = blocos || [];
 
       const podeMexer = editavel();
 
@@ -294,7 +297,10 @@
               <option value="assinatura" ${contrato.suporte_inicio === 'assinatura' ? 'selected' : ''}>A partir da assinatura do contrato</option>
             </select>
           </div>
-          <div class="field mt-4"><label class="mono-label">Condições especiais</label><textarea id="cCondicoesEspeciais" rows="3" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea></div>
+          <div class="field mt-4"><label class="mono-label">Condições especiais</label>
+            ${podeMexer && blocosCondicoes.length ? `<div class="flex gap-2 mb-2" style="flex-wrap:wrap;"><select id="cBlocoSel" style="flex:1; min-width:200px;"><option value="">Inserir bloco pronto…</option>${blocosCondicoes.map((b) => `<option value="${b.id}">${escapeHtml(b.titulo)}</option>`).join('')}</select><button type="button" class="btn btn-secondary btn-sm" id="btnInserirBloco">Inserir</button></div>` : ''}
+            <textarea id="cCondicoesEspeciais" rows="6" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.condicoes_especiais || '')}</textarea>
+            <p class="text-muted" style="font-size:11.5px; margin-top:4px;">Os blocos prontos vêm de Configurações → Condições. Cada um entra numerado ao final do texto, e você pode editar depois.</p></div>
           <div class="field"><label class="mono-label">Observações internas</label><textarea id="cObservacoes" rows="2" ${podeMexer ? '' : 'disabled'}>${escapeHtml(contrato.observacoes || '')}</textarea></div>
 
           ${contrato.condicoes_pagamento_texto ? `<p class="text-muted mt-2" style="font-size:12px;">Resumo atual: ${escapeHtml(contrato.condicoes_pagamento_texto)}</p>` : ''}
@@ -428,6 +434,17 @@
         });
       }
 
+      const btnInserirBloco = document.getElementById('btnInserirBloco');
+      if (btnInserirBloco) btnInserirBloco.addEventListener('click', () => {
+        const bloco = blocosCondicoes.find((b) => b.id === document.getElementById('cBlocoSel').value);
+        if (!bloco) return;
+        const ta = document.getElementById('cCondicoesEspeciais');
+        const numeros = [...ta.value.matchAll(/^\s*(\d+)\)/gm)].map((m) => Number(m[1]));
+        const proximo = (numeros.length ? Math.max(...numeros) : 0) + 1;
+        const linha = `${proximo}) ${bloco.titulo}: ${bloco.texto}`;
+        ta.value = ta.value.trim() ? `${ta.value.trim()}\n${linha}` : linha;
+        document.getElementById('cBlocoSel').value = '';
+      });
       const btnSalvarCondicoes = document.getElementById('btnSalvarCondicoes');
       if (btnSalvarCondicoes) {
         btnSalvarCondicoes.addEventListener('click', async () => {
