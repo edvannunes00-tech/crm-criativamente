@@ -130,6 +130,7 @@ Deno.serve(async (req: Request) => {
         reason: `${ctx.produto.nome} (${periodicidade})`,
         external_reference: a!.id,
         payer_email: cliente.email,
+        status: "pending", // sem token de cartao: o pagador escolhe o meio no checkout do proprio Mercado Pago
         // Sem o token do link na URL: o navegador guarda o token localmente e volta por aqui.
         back_url: `${SITE_URL}/contrato-publico.html?pagamento=retorno&ref=${a!.id}`,
         auto_recurring: {
