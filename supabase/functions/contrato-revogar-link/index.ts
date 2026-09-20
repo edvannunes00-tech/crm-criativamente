@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
         motivo_revogacao: motivo_revogacao ?? null,
       })
       .eq("id", link_id)
-      .eq("status", "ativo")
+      .in("status", ["ativo", "dados_confirmados"])
       .select("id")
       .maybeSingle();
 
@@ -112,7 +112,7 @@ Deno.serve(async (req: Request) => {
 
     if (!atualizado) {
       return jsonResponse(
-        { error: "Este link ja nao esta mais ativo (confirmado, expirado ou ja revogado)." },
+        { error: "Este link ja nao pode ser revogado (assinado, expirado ou ja revogado)." },
         409
       );
     }

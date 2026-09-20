@@ -86,7 +86,7 @@
         if (!body.disponivel) { renderIndisponivel(); return; }
         dadosContrato = body.contrato;
         dadosContratada = body.contratada || null;
-        if (body.pos_confirmacao) { renderPagamento(); return; }
+        if (body.pos_confirmacao) { if (dadosContrato.recorrencia) renderPagamento(); else renderAssinatura(); return; }
         renderRevisao();
       } catch {
         conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
@@ -145,6 +145,12 @@
           </form>
         </div>
       `;
+      let previo = dadosPreenchidos;
+      if (!previo) { try { previo = JSON.parse(sessionStorage.getItem('contratoDados') || 'null'); } catch { previo = null; } }
+      if (previo) {
+        const mapa = { dNome: 'nome_completo', dCpfCnpj: 'cpf_cnpj', dEmpresaMarca: 'empresa_marca', dTelefone: 'telefone', dEmail: 'email', dCep: 'endereco_cep', dLogradouro: 'endereco_logradouro', dNumero: 'endereco_numero', dComplemento: 'endereco_complemento', dBairro: 'endereco_bairro', dCidade: 'endereco_cidade', dEstado: 'endereco_estado' };
+        Object.entries(mapa).forEach(([id, k]) => { const el = document.getElementById(id); if (el && previo[k]) el.value = previo[k]; });
+      }
       document.getElementById('formDados').addEventListener('submit', async (e) => {
         e.preventDefault();
         const btn = document.getElementById('btnSalvarDados');
@@ -171,6 +177,7 @@
           const body = await resp.json();
           if (!body.ok) { renderIndisponivel(); return; }
           dadosPreenchidos = dados;
+          try { sessionStorage.setItem('contratoDados', JSON.stringify(dados)); } catch { /* opcional */ }
           renderEscopo();
         } catch {
           alert('Não foi possível salvar seus dados agora. Tente novamente.');
@@ -290,6 +297,25 @@
       });
     }
 
+    async function reabrirDados() {
+      if (!confirm('Voltar e corrigir seus dados? Você precisará confirmá-los de novo antes de assinar.')) return;
+      try {
+        const resp = await fetch(FUNCTION_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, acao: 'reabrir' }) });
+        const body = await resp.json();
+        if (!body.ok) {
+          alert(body.motivo === 'pagamento_em_andamento'
+            ? 'O pagamento já foi iniciado, então não é possível alterar os dados por aqui. Fale com a nossa equipe se algo estiver incorreto.'
+            : 'Não foi possível voltar agora. Tente novamente.');
+          return;
+        }
+        window.location.reload();
+      } catch {
+        alert('Não foi possível voltar agora. Tente novamente.');
+      }
+    }
+    const LINK_VOLTAR = '<button type="button" class="btn-ghost btn-block mt-4" id="btnReabrirDados" style="font-size:12.5px; text-decoration:underline;">Voltar e corrigir meus dados</button>';
+    function ligarVoltar() { const b = document.getElementById('btnReabrirDados'); if (b) b.addEventListener('click', reabrirDados); }
+
     async function chamarCheckout(acao, extra = {}) {
       const resp = await fetch(CHECKOUT_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -344,7 +370,9 @@
             <p style="font-size:14px; line-height:1.6;">${voltouDoCheckout ? 'Estamos aguardando a confirmação do Mercado Pago. Isso pode levar alguns instantes.' : 'Seu pagamento ainda não foi confirmado.'}</p>
             <button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button>
             <button class="btn btn-primary btn-block mt-2" id="btnContinuarPagamento">Continuar para o pagamento</button>
+            ${LINK_VOLTAR}
           </div>`;
+        ligarVoltar();
         document.getElementById('btnVerificar').addEventListener('click', renderPagamento);
         document.getElementById('btnContinuarPagamento').addEventListener('click', () => iniciarPagamento(a.periodicidade));
         if (voltouDoCheckout && pollingPagamento < 12) { pollingPagamento += 1; setTimeout(renderPagamento, 5000); }
@@ -362,7 +390,9 @@
           <button class="btn btn-primary btn-block" id="btnMensal">${formatarMoeda(v.mensal)} / mês</button>
           <button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano${descontoAnual ? ` · economize ${descontoAnual}%` : ''}</button>
           <p class="text-muted mt-4" style="font-size:11.5px; line-height:1.6;">O pagamento é feito no ambiente seguro do Mercado Pago. Nós não armazenamos os dados do seu cartão. A contratação só é concluída depois da confirmação do pagamento pelo Mercado Pago.</p>
+          ${LINK_VOLTAR}
         </div>`;
+      ligarVoltar();
       document.getElementById('btnMensal').addEventListener('click', () => iniciarPagamento('mensal'));
       document.getElementById('btnAnual').addEventListener('click', () => iniciarPagamento('anual'));
     }
@@ -396,8 +426,10 @@
             Esta é uma assinatura eletrônica simples — evidência do seu aceite dentro deste fluxo, não uma assinatura digital
             certificada (ICP-Brasil) nem necessariamente equivalente a uma assinatura eletrônica qualificada.
           </p>
+          ${pagamentoConfirmado ? '' : LINK_VOLTAR}
         </div>
       `;
+      ligarVoltar();
 
       const canvas = document.getElementById('canvasAssinatura');
       const ctx2d = canvas.getContext('2d');

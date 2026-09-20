@@ -82,18 +82,23 @@ async function handleGet(req: Request): Promise<Response> {
 
   const acesso = acessoRows?.[0];
 
-  // Contrato de recorrencia (manutencao): depois de o cliente confirmar os dados o link
-  // fica "confirmado", mas a pagina ainda precisa continuar (pagamento e assinatura).
-  // Devolve so o minimo, sem dados pessoais.
-  if (acesso && acesso.status_link === "confirmado" && (await temRecorrencia(supabaseAdmin, acesso.contrato_id))) {
-    const { data: c } = await supabaseAdmin.from("contratos").select("empresa_id, titulo").eq("id", acesso.contrato_id).maybeSingle();
-    if (c) {
-      return jsonResponse({
-        disponivel: true,
-        pos_confirmacao: true,
-        contrato: { titulo: c.titulo, recorrencia: true },
-        contratada: await dadosContratada(supabaseAdmin, c.empresa_id),
-      }, 200);
+  // Depois que o cliente confirma os dados o link fica "dados_confirmados" (etapa intermediaria:
+  // falta pagamento, se houver, e a ASSINATURA). So a assinatura torna o link "confirmado" e trava.
+  // Devolve so o minimo, sem dados pessoais. Contrato de recorrencia ja assinado continua
+  // mostrando a tela final.
+  if (acesso && (acesso.status_link === "dados_confirmados" || acesso.status_link === "confirmado")) {
+    const recorrente = await temRecorrencia(supabaseAdmin, acesso.contrato_id);
+    if (acesso.status_link === "dados_confirmados" || recorrente) {
+      const { data: c } = await supabaseAdmin.from("contratos").select("empresa_id, titulo").eq("id", acesso.contrato_id).maybeSingle();
+      if (c) {
+        return jsonResponse({
+          disponivel: true,
+          pos_confirmacao: true,
+          assinado: acesso.status_link === "confirmado",
+          contrato: { titulo: c.titulo, recorrencia: recorrente },
+          contratada: await dadosContratada(supabaseAdmin, c.empresa_id),
+        }, 200);
+      }
     }
   }
 
@@ -173,6 +178,7 @@ function mapaErroNegocio(mensagem: string): string {
   if (mensagem.includes("dados_nao_preenchidos")) return "dados_nao_preenchidos";
   if (mensagem.includes("dados_incompletos")) return "dados_incompletos";
   if (mensagem.includes("assinatura_ja_registrada")) return "assinatura_ja_registrada";
+  if (mensagem.includes("pagamento_em_andamento")) return "pagamento_em_andamento";
   return "erro_desconhecido";
 }
 
@@ -185,7 +191,7 @@ async function handleAssinar(supabaseAdmin: ReturnType<typeof criarSupabaseAdmin
     .eq("token_hash", tokenHash)
     .maybeSingle();
 
-  if (!link || link.status !== "confirmado") {
+  if (!link || link.status !== "dados_confirmados") {
     return jsonResponse({ ok: false, motivo: "link_indisponivel" }, 200);
   }
 
@@ -246,8 +252,8 @@ async function handlePost(req: Request): Promise<Response> {
   if (!token || typeof token !== "string") {
     return jsonResponse({ error: "token e obrigatorio" }, 400);
   }
-  if (acao !== "salvar" && acao !== "confirmar" && acao !== "assinar") {
-    return jsonResponse({ error: "acao deve ser 'salvar', 'confirmar' ou 'assinar'" }, 400);
+  if (acao !== "salvar" && acao !== "confirmar" && acao !== "assinar" && acao !== "reabrir") {
+    return jsonResponse({ error: "acao deve ser 'salvar', 'confirmar', 'assinar' ou 'reabrir'" }, 400);
   }
 
   const tokenHash = await sha256Hex(token);
@@ -276,6 +282,12 @@ async function handlePost(req: Request): Promise<Response> {
     if (error) {
       return jsonResponse({ ok: false, motivo: mapaErroNegocio(error.message) }, 200);
     }
+    return jsonResponse({ ok: true }, 200);
+  }
+
+  if (acao === "reabrir") {
+    const { error } = await supabaseAdmin.rpc("reabrir_dados_contrato", { p_token_hash: tokenHash });
+    if (error) return jsonResponse({ ok: false, motivo: mapaErroNegocio(error.message) }, 200);
     return jsonResponse({ ok: true }, 200);
   }
 

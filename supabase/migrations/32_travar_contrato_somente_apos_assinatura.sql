@@ -1,0 +1,7 @@
+-- Aplicada via apply_migration (32_travar_contrato_somente_apos_assinatura):
+-- contrato_links ganha status 'dados_confirmados' (etapa intermediaria) e coluna dados_confirmados_em;
+-- 'confirmado' passa a significar ASSINADO (unico estado que trava). Dados do cliente so travam quando
+-- assinatura_confirmada_em existe. confirmar_dados_contrato -> dados_confirmados; nova
+-- reabrir_dados_contrato (cliente corrige dados antes de assinar; bloqueia se pagamento iniciado);
+-- registrar_assinatura_contrato exige dados_confirmados e marca o link como 'confirmado'.
+-- Backfill: links 'confirmado' sem assinatura voltaram para 'dados_confirmados'.

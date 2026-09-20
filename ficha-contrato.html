@@ -717,18 +717,19 @@
       const { data: links } = await supabase.from('contrato_links').select('*').eq('contrato_id', contratoId).order('created_at', { ascending: false });
       const podeGerenciar = podeEditar;
 
-      const LINK_STATUS_BADGE = { ativo: 'dot-info', confirmado: 'dot-sucesso', expirado: 'dot-neutro', revogado: 'dot-erro' };
+      const LINK_STATUS_BADGE = { ativo: 'dot-info', dados_confirmados: 'dot-info', confirmado: 'dot-sucesso', expirado: 'dot-neutro', revogado: 'dot-erro' };
+      const LINK_STATUS_LABEL = { ativo: 'Aguardando cliente', dados_confirmados: 'Dados confirmados, aguardando assinatura', confirmado: 'Assinado', expirado: 'Expirado', revogado: 'Revogado' };
 
       const linksHtml = (links || []).length === 0
         ? `<div class="empty-state"><p>Nenhum link gerado ainda.</p></div>`
         : `<div class="table-wrap"><table class="data-table"><thead><tr><th>Status</th><th>Criado em</th><th>Expira em</th><th>Acessos</th><th></th></tr></thead><tbody>
             ${links.map((l) => `
               <tr>
-                <td><span class="badge ${LINK_STATUS_BADGE[l.status] || 'dot-neutro'}"><span class="dot"></span>${l.status}</span></td>
+                <td><span class="badge ${LINK_STATUS_BADGE[l.status] || 'dot-neutro'}"><span class="dot"></span>${LINK_STATUS_LABEL[l.status] || l.status}</span></td>
                 <td class="cell-muted">${formatarData(l.created_at, true)}</td>
                 <td class="cell-muted">${formatarData(l.expires_at, true)}</td>
                 <td>${l.access_count}</td>
-                <td>${podeGerenciar && l.status === 'ativo' ? `<button class="btn-ghost" data-revogar="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Revogar</button>` : ''}</td>
+                <td>${podeGerenciar && (l.status === 'ativo' || l.status === 'dados_confirmados') ? `<button class="btn-ghost" data-revogar="${l.id}" style="font-size:12px; text-decoration:underline; color:var(--status-erro);">Revogar</button>` : ''}</td>
               </tr>
             `).join('')}
           </tbody></table></div>`;

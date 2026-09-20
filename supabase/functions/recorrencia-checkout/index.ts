@@ -33,7 +33,7 @@ type Row = Record<string, any>;
 
 async function contextoDoLink(db: ReturnType<typeof admin>, token: string) {
   const { data: link } = await db.from("contrato_links").select("id, empresa_id, contrato_id, status").eq("token_hash", await sha256Hex(token)).maybeSingle();
-  if (!link || link.status !== "confirmado") return null; // so depois de o cliente confirmar os dados
+  if (!link || (link.status !== "dados_confirmados" && link.status !== "confirmado")) return null; // so depois de o cliente confirmar os dados
   // Tipo e valores contratados vem do SNAPSHOT do item (migration 30): cobra o que foi contratado.
   const { data: itens } = await db.from("contrato_itens")
     .select("produto_id, descricao, recorrencia_tipo, recorrencia_valor_mensal, recorrencia_valor_anual")
@@ -92,6 +92,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- iniciar ----
+    if (ctx.link.status !== "dados_confirmados") return json({ ok: false, motivo: "link_indisponivel" }); // contrato ja assinado nao inicia nova cobranca
     const periodicidade = body.periodicidade;
     if (periodicidade !== "mensal" && periodicidade !== "anual") return json({ error: "periodicidade deve ser 'mensal' ou 'anual'" }, 400);
     const mpToken = Deno.env.get("MERCADO_PAGO_ACCESS_TOKEN");

@@ -1,0 +1,4 @@
+-- Aplicada via apply_migration (31_caixa_de_email): modulo 'email' + permissoes do Administrador,
+-- tabela crm.emails (espelho do inbound_emails do CriativaBio: inbound/outbound, lido, respondido,
+-- arquivado, lixeira, anexos jsonb), RLS por tem_permissao(email, ...), UPDATE so nas colunas
+-- is_read/archived_at/deleted_at.
