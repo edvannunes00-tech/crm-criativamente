@@ -32,7 +32,7 @@ export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, 
     return `
       <div class="card mb-4" data-rec="${r.id}">
         <div class="flex items-center justify-between mb-2">
-          <span class="mono-label">Manutenção do site${linkContrato ? ` — <a href="/ficha-contrato.html?id=${r.contrato_id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(r.contrato_titulo || 'contrato')}</a>` : ''}</span>
+          <span class="mono-label">${r.plano === 'gestao_trafego' ? 'Gestão de tráfego pago' : 'Manutenção do site'}${linkContrato ? ` — <a href="/ficha-contrato.html?id=${r.contrato_id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(r.contrato_titulo || 'contrato')}</a>` : ''}</span>
           ${podeCancelar && viva ? `<button class="btn btn-secondary btn-sm" data-cancelar-rec="${r.id}" style="color:var(--status-erro);">Cancelar recorrência</button>` : ''}
         </div>
         <div class="flex gap-4" style="flex-wrap:wrap; align-items:center;">

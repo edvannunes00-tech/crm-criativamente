@@ -391,6 +391,12 @@
 
     let pollingPagamento = 0;
 
+    function textoServicoRecorrente() {
+      const item = ((dadosContrato && dadosContrato.itens) || []).find((i) => i.recorrencia_tipo);
+      if (item && item.recorrencia_tipo === 'gestao_trafego') return 'Gestão de tráfego pago (Meta, Google e TikTok Ads). A verba de anúncios é paga por você diretamente às plataformas e não está inclusa na mensalidade.';
+      return 'Manutenção e suporte para o seu site.';
+    }
+
     async function renderPagamento() {
       const rotulo = `Passo 6 de ${totalPassos()} — Pagamento`;
       conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="skeleton" style="height:160px;"></div>`;
@@ -444,15 +450,16 @@
         <div class="passo-label">${rotulo}</div>
         <div class="card">
           <p style="font-size:15px; font-weight:700; margin-bottom:6px;">Escolha como deseja contratar</p>
-          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">Manutenção e suporte para o seu site.</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">${escapeHtml(textoServicoRecorrente())}</p>
           <button class="btn btn-primary btn-block" id="btnMensal">${formatarMoeda(v.mensal)} / mês</button>
-          <button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano${descontoAnual ? ` · economize ${descontoAnual}%` : ''}</button>
+          ${Number(v.anual) > 0 ? `<button class="btn btn-secondary btn-block mt-2" id="btnAnual">${formatarMoeda(v.anual)} / ano${descontoAnual ? ` · economize ${descontoAnual}%` : ''}</button>` : ''}
           <p class="text-muted mt-4" style="font-size:11.5px; line-height:1.6;">O pagamento é feito no ambiente seguro do Mercado Pago. Nós não armazenamos os dados do seu cartão. A contratação só é concluída depois da confirmação do pagamento pelo Mercado Pago.</p>
           ${LINK_VOLTAR}
         </div>`;
       ligarVoltar();
       document.getElementById('btnMensal').addEventListener('click', () => iniciarPagamento('mensal'));
-      document.getElementById('btnAnual').addEventListener('click', () => iniciarPagamento('anual'));
+      const btnAnual = document.getElementById('btnAnual');
+      if (btnAnual) btnAnual.addEventListener('click', () => iniciarPagamento('anual'));
     }
 
     async function iniciarPagamento(periodicidade) {

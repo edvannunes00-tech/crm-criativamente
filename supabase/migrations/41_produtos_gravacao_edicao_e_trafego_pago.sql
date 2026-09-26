@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration (41): produtos 'Gravação e Edição de Vídeo de Aulas' (R$ 1.200, até 40 aulas, sem publicação em plataforma) e 'Gestão de Tráfego Pago (Meta, Google e TikTok Ads)' (recorrente, R$ 497/mês, sem plano anual, verba paga pelo cliente).

@@ -48,10 +48,10 @@
 
     const FIN_LABEL = { aguardando_pagamento: 'Aguardando pagamento', ativo: 'Em dia', pendente: 'Pagamento pendente', inadimplente: 'Inadimplente', cancelado: 'Cancelado', encerrado: 'Encerrado' };
     const FIN_BADGE = { aguardando_pagamento: 'dot-neutro', ativo: 'dot-sucesso', pendente: 'dot-info', inadimplente: 'dot-erro', cancelado: 'dot-neutro', encerrado: 'dot-neutro' };
-    const SUP_LABEL = { ativo: 'Suporte ativo', em_carencia: 'Em carência', suspenso: 'Suporte suspenso', encerrado: 'Encerrado', aguardando: 'Aguardando' };
+    const SUP_LABEL = { ativo: 'Serviço ativo', em_carencia: 'Em carência', suspenso: 'Serviço suspenso', encerrado: 'Encerrado', aguardando: 'Aguardando' };
     const SUP_BADGE = { ativo: 'dot-sucesso', em_carencia: 'dot-info', suspenso: 'dot-erro', encerrado: 'dot-neutro', aguardando: 'dot-neutro' };
     const SITE_LABEL = { nao_aplicavel: '—', no_ar: 'No ar', suspenso: 'Suspenso' };
-    const PLANO_LABEL = { manutencao_suporte: 'Manutenção e Suporte' };
+    const PLANO_LABEL = { manutencao_suporte: 'Manutenção e Suporte', gestao_trafego: 'Gestão de Tráfego Pago' };
     const ULT_LABEL = { aprovada: 'aprovada', recusada: 'recusada', pendente: 'pendente', estornada: 'estornada', cancelada: 'cancelada' };
 
     let todas = [];
@@ -91,7 +91,7 @@
         && (!t || (r.cliente_nome || '').toLowerCase().includes(t) || (r.contrato_titulo || '').toLowerCase().includes(t)));
 
       if (lista.length === 0) {
-        wrap.innerHTML = `<div class="empty-state"><p>${todas.length === 0 ? 'Nenhuma recorrência ainda. Elas aparecem aqui quando um contrato de manutenção tiver a cobrança criada.' : 'Nenhuma recorrência com esse filtro.'}</p></div>`;
+        wrap.innerHTML = `<div class="empty-state"><p>${todas.length === 0 ? 'Nenhuma recorrência ainda. Elas aparecem aqui quando um contrato com assinatura mensal (manutenção de site ou gestão de tráfego) tiver a cobrança criada.' : 'Nenhuma recorrência com esse filtro.'}</p></div>`;
         return;
       }
 

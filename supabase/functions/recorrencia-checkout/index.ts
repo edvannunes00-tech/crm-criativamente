@@ -113,12 +113,12 @@ Deno.serve(async (req: Request) => {
     if (!contrato) return json({ ok: false, motivo: "link_indisponivel" });
 
     if (a) {
-      await db.from("assinaturas_recorrentes").update({ periodicidade, valor, checkout_url: null }).eq("id", a.id);
+      await db.from("assinaturas_recorrentes").update({ periodicidade, valor, checkout_url: null, plano: ctx.produto.recorrencia_tipo }).eq("id", a.id);
       a = { ...a, periodicidade, valor };
     } else {
       const { data: nova, error: errIns } = await db.from("assinaturas_recorrentes").insert({
         empresa_id: ctx.link.empresa_id, contrato_id: ctx.link.contrato_id, contato_id: contrato.contato_id,
-        produto_id: ctx.produto.id, periodicidade, valor,
+        produto_id: ctx.produto.id, periodicidade, valor, plano: ctx.produto.recorrencia_tipo,
       }).select("*").single();
       if (errIns || !nova) return json({ ok: false, motivo: "erro_interno" });
       a = nova;

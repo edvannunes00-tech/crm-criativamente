@@ -140,7 +140,7 @@ async function handleGet(req: Request): Promise<Response> {
         "escopo_objeto, escopo_quantidade_maxima_aulas, escopo_modalidade_gravacao, escopo_equipamentos, " +
         "escopo_direcao, escopo_edicao, escopo_capas, escopo_plataforma, escopo_pagina_vendas, " +
         "escopo_certificado, escopo_apostila_material, escopo_legendas, escopo_vinheta, escopo_site, " +
-        "escopo_midia_fisica, escopo_prazo_suporte_meses, escopo_observacoes, escopo_exclusoes, termos_contratuais"
+        "escopo_midia_fisica, escopo_prazo_suporte_meses, escopo_observacoes, escopo_exclusoes, termos_contratuais, recorrencia_tipo"
     )
     .eq("contrato_id", acesso.contrato_id);
 

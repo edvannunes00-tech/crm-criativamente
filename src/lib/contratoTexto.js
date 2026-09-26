@@ -86,7 +86,7 @@ export function montarTextoEscopo(itens, suporteInicio = 'entrega') {
 
 // Versao da minuta padrao (texto das clausulas). Muda sempre que uma clausula for alterada; aparece no rodape
 // do PDF e e gravada em cada versao de documento gerada, para rastrear qual texto foi usado.
-export const MINUTA_VERSAO = '2026-09-20.1';
+export const MINUTA_VERSAO = '2026-09-26.1';
 
 export const CLAUSULAS = [
   {
@@ -205,8 +205,48 @@ export const CLAUSULAS_RECORRENCIA = [
   },
 ];
 
+// Clausulas da assinatura mensal de GESTAO DE TRAFEGO PAGO. `n` e o numero da primeira clausula
+// (14 quando e a unica recorrencia do contrato; 15 se o contrato tambem tem manutencao de site).
+export function clausulasTrafego(n = 14) {
+  return [
+    {
+      titulo: `CLÁUSULA ${n}ª — DA GESTÃO DE TRÁFEGO PAGO`,
+      texto: () => `A CONTRATADA prestará ao CONTRATANTE, de forma recorrente, o serviço de gestão de tráfego pago descrito no Escopo Detalhado, compreendendo o planejamento, a criação, a configuração, o acompanhamento e a otimização de campanhas de anúncios nas plataformas Meta Ads, Google Ads e/ou TikTok Ads, conforme definido no contrato. O serviço é de meio, e não de resultado: a CONTRATADA emprega técnica e diligência para buscar o melhor desempenho possível, mas não garante volume de vendas, contatos, faturamento, retorno sobre o investimento ou qualquer resultado específico, que dependem de fatores fora do seu controle, como mercado, produto, oferta, preço, concorrência, qualidade do atendimento comercial do CONTRATANTE e políticas e alterações das próprias plataformas. A contratação não impõe qualquer período mínimo de permanência (fidelidade).`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-A — DA VERBA DE ANÚNCIOS`,
+      texto: () => `O valor da mensalidade remunera exclusivamente o serviço de gestão prestado pela CONTRATADA e não inclui a verba de anúncios (investimento em mídia). A verba de anúncios é definida e paga diretamente pelo CONTRATANTE às plataformas de anúncio, por meio de forma de pagamento por ele cadastrada na conta de anúncios de sua titularidade, cabendo-lhe mantê-la ativa e com limite suficiente. A CONTRATADA não movimenta, adianta nem recebe a verba de anúncios e não responde por bloqueios, cobranças, limites ou suspensões aplicados pelas plataformas em razão de questões de pagamento.`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-B — DAS CONTAS, ACESSOS E MATERIAIS`,
+      texto: () => `As contas de anúncios, páginas, perfis, pixels e demais ativos digitais pertencem ao CONTRATANTE. Para a execução do serviço, o CONTRATANTE concederá à CONTRATADA os acessos estritamente necessários, preferencialmente por permissão de gerenciamento nas próprias plataformas, sem compartilhamento de senhas pessoais quando houver forma de concessão por permissão. O CONTRATANTE fornecerá, em tempo hábil, produtos, ofertas, imagens, vídeos, textos e informações necessários, e é responsável pela veracidade e pela licitude do que é anunciado e pelo cumprimento das políticas das plataformas e da legislação aplicável, inclusive de publicidade e de defesa do consumidor. Reprovações, restrições ou bloqueios de contas ou anúncios decorrentes do descumprimento de políticas ou de informações fornecidas pelo CONTRATANTE não configuram falha do serviço. Encerrada a contratação, os acessos concedidos à CONTRATADA serão removidos e as contas permanecem com o CONTRATANTE.`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-C — DA PERIODICIDADE, COBRANÇA E RENOVAÇÃO`,
+      texto: () => `O serviço é contratado na periodicidade e no valor informados no Quadro Comercial e na etapa de pagamento. A cobrança é recorrente, realizada em cartão de crédito por meio do Mercado Pago, e se renova automaticamente a cada período enquanto a contratação não for cancelada. Os dados do cartão são tratados exclusivamente pelo provedor de pagamento, não sendo armazenados pela CONTRATADA. A contratação só é concluída depois da confirmação do pagamento pelo provedor.`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-D — DO CANCELAMENTO`,
+      texto: () => `O CONTRATANTE poderá cancelar a contratação recorrente a qualquer momento, sem multa e sem período mínimo, o que interrompe as cobranças futuras; para evitar a renovação seguinte, o cancelamento deve ser feito antes da data da próxima cobrança. Havendo período já pago, a gestão será mantida até o final desse período, sem reembolso proporcional, ressalvados os direitos do CONTRATANTE previstos em lei, inclusive o direito de arrependimento do art. 49 do Código de Defesa do Consumidor, quando aplicável. Com o cancelamento, a CONTRATADA encerra a gestão ao fim do período pago, e as campanhas que permanecerem ativas passam a ser de responsabilidade exclusiva do CONTRATANTE.`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-E — DA INADIMPLÊNCIA E SUSPENSÃO DA GESTÃO`,
+      texto: () => `Havendo falha na cobrança, a CONTRATADA acompanhará o ciclo de novas tentativas realizado pelo provedor de pagamento, sem cancelar a contratação por uma única falha. Persistindo a falta de pagamento, o CONTRATANTE será avisado e, decorridos 7 (sete) dias corridos contados da última tentativa de cobrança sem sucesso, a gestão poderá ser suspensa até a regularização, podendo as campanhas ser pausadas para evitar consumo de verba sem acompanhamento, sem exclusão de contas ou conteúdos do CONTRATANTE. Regularizado o pagamento, o serviço será restabelecido.`,
+    },
+    {
+      titulo: `CLÁUSULA ${n}ª-F — DOS LIMITES DO SERVIÇO E DOS SERVIÇOS ADICIONAIS`,
+      texto: () => `O serviço abrange apenas o que consta do Escopo Detalhado. Não estão incluídos criação de site ou landing page, produção de vídeos, fotos e peças visuais, gestão de redes sociais orgânicas, atendimento comercial dos contatos gerados, integrações de sistemas nem campanhas em plataformas não previstas no contrato, que poderão ser orçados separadamente, mediante orçamento prévio.`,
+    },
+  ];
+}
+
 export function clausulasDoContrato(ctx) {
-  return ctx && ctx.recorrencia ? [...CLAUSULAS, ...CLAUSULAS_RECORRENCIA] : CLAUSULAS;
+  if (!ctx || !ctx.recorrencia) return CLAUSULAS;
+  const tipos = ctx.tiposRecorrencia && ctx.tiposRecorrencia.length ? ctx.tiposRecorrencia : ['manutencao_suporte'];
+  const extras = [];
+  if (tipos.includes('manutencao_suporte') || tipos.some((t) => t !== 'gestao_trafego')) extras.push(...CLAUSULAS_RECORRENCIA);
+  if (tipos.includes('gestao_trafego')) extras.push(...clausulasTrafego(extras.length ? 15 : 14));
+  return [...CLAUSULAS, ...extras];
 }
 
 export function montarContextoJuridico({
@@ -247,6 +287,7 @@ export function montarContextoJuridico({
     escopoTexto: montarTextoEscopo(itens, suporteInicio),
     suporteInicio: suporteInicio === 'assinatura' ? 'assinatura' : 'entrega',
     recorrencia: recorrencia ?? (itens || []).some((i) => i.recorrencia_tipo),
+    tiposRecorrencia: [...new Set((itens || []).map((i) => i.recorrencia_tipo).filter(Boolean))],
     prazoSuporteMeses,
     foroComarca: 'domicílio da CONTRATADA',
   };
