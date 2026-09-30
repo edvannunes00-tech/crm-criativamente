@@ -1,0 +1,1 @@
+-- Aplicada via apply_migration (42): registrar_assinatura_contrato agora avança crm.contratos.status para 'assinado' automaticamente quando o cliente assina pelo link (antes ficava preso em aguardando_assinatura até upload manual). Backfill dos contratos já assinados.
