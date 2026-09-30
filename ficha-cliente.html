@@ -111,6 +111,12 @@
             </div>
             <div class="flex gap-2 items-center">
               <span class="badge ${statusBadgeClasse(data.status_calculado)}"><span class="dot"></span>${data.status_calculado}</span>
+              ${podeEditar ? `
+                <select id="fStatusRelacionamento" title="Lead x Cliente — o rótulo exato (Ativo/Inativo/Recorrente) é calculado sozinho a partir das compras" style="background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:6px 8px; color:var(--white); font-size:12.5px;">
+                  <option value="Lead" ${data.status_relacionamento === 'Lead' ? 'selected' : ''}>Lead</option>
+                  <option value="Cliente" ${data.status_relacionamento !== 'Lead' ? 'selected' : ''}>Cliente</option>
+                </select>
+              ` : ''}
               ${podeEditar ? `<button class="btn btn-secondary btn-sm" id="btnEditar">Editar</button>` : ''}
               ${podeExcluir ? `<button class="btn btn-secondary btn-sm" id="btnExcluir" style="color:var(--status-erro);">Excluir</button>` : ''}
               ${wpp ? `<a class="btn btn-secondary btn-sm" href="${wpp}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
@@ -121,6 +127,12 @@
 
       if (podeEditar) document.getElementById('btnEditar').addEventListener('click', abrirModalEdicao);
       if (podeExcluir) document.getElementById('btnExcluir').addEventListener('click', excluirContato);
+      if (podeEditar) document.getElementById('fStatusRelacionamento').addEventListener('change', async (e) => {
+        const novo = e.target.value;
+        const { error } = await supabase.from('contatos').update({ status_relacionamento: novo }).eq('id', contatoId);
+        if (error) { alert('Não foi possível atualizar o status.'); return; }
+        await carregarCabecalho();
+      });
 
       document.getElementById('resumoCards').innerHTML = `
         <div class="indicator-card"><div class="label mono-label">LTV</div><div class="value">${formatarMoeda(data.ltv_total)}</div></div>

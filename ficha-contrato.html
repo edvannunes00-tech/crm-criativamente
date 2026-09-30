@@ -133,11 +133,57 @@
             <div class="indicator-card"><div class="label mono-label">Valor negociado</div><div class="value">${formatarMoeda(data.valor_negociado_total)}</div></div>
           </div>
         </div>
+        ${(data.status === 'assinado' && !data.projeto_id && podeEditar) ? `
+          <div class="card" style="margin-bottom:24px; border-color:var(--accent);">
+            <div class="mono-label mb-2">Contrato assinado — criar o projeto de execução?</div>
+            <div class="flex gap-2 items-center" style="flex-wrap:wrap;">
+              <select id="fTemplateProjetoContrato" style="flex:1; min-width:180px; background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:8px; color:var(--white);"></select>
+              <button class="btn btn-primary btn-sm" id="btnCriarProjetoContrato">Criar projeto</button>
+              <button class="btn-ghost btn-sm" id="btnDispensarProjetoContrato">Este contrato não precisa de projeto</button>
+            </div>
+          </div>
+        ` : ''}
       `;
 
       if (podeCancelar) document.getElementById('btnCancelar').addEventListener('click', cancelarContrato);
       if (podeExcluirRascunho) document.getElementById('btnExcluirContrato').addEventListener('click', excluirContratoRascunho);
       if (podeRegistrarEnvio) document.getElementById('btnRegistrarEnvio').addEventListener('click', registrarEnvio);
+      if (data.status === 'assinado' && !data.projeto_id && podeEditar) await prepararBlocoProjeto();
+    }
+
+    // Sugere o template de projeto com base nas palavras-chave dos itens do contrato (site/curso/apostila).
+    // É só um chute inicial pré-selecionado no <select> — o operador confirma ou troca antes de criar.
+    async function prepararBlocoProjeto() {
+      const [{ data: templates }, { data: itens }] = await Promise.all([
+        supabase.from('projeto_templates').select('id, nome').eq('empresa_id', empresaId).order('nome'),
+        supabase.from('contrato_itens').select('descricao, produtos_servicos(nome, categoria)').eq('contrato_id', contratoId),
+      ]);
+      const lista = templates || [];
+      const sel = document.getElementById('fTemplateProjetoContrato');
+      sel.innerHTML = lista.map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}</option>`).join('');
+
+      const textoItens = (itens || []).map((i) => `${i.descricao || ''} ${i.produtos_servicos?.nome || ''} ${i.produtos_servicos?.categoria || ''}`).join(' ').toLowerCase();
+      const PALAVRAS = { 'criação de site': ['site'], 'produção de curso': ['curso', 'aula'], 'apostilas': ['apostila'] };
+      const sugestao = lista.find((t) => (PALAVRAS[t.nome.toLowerCase()] || []).some((p) => textoItens.includes(p)));
+      if (sugestao) sel.value = sugestao.id;
+
+      document.getElementById('btnCriarProjetoContrato').addEventListener('click', async () => {
+        const templateId = sel.value;
+        if (!templateId) return;
+        const btn = document.getElementById('btnCriarProjetoContrato');
+        btn.disabled = true; btn.textContent = 'Criando...';
+        const { data: projetoId, error } = await supabase.rpc('criar_projeto', {
+          p_empresa_id: empresaId, p_template_id: templateId, p_nome: contrato.titulo,
+          p_contato_id: contato.id, p_oportunidade_id: contrato.oportunidade_id || null, p_valor: contrato.valor_negociado_total,
+        });
+        if (error) { alert('Não foi possível criar o projeto agora.'); btn.disabled = false; btn.textContent = 'Criar projeto'; return; }
+        await supabase.from('contratos').update({ projeto_id: projetoId }).eq('id', contratoId);
+        window.location.href = `/ficha-projeto.html?id=${projetoId}`;
+      });
+
+      document.getElementById('btnDispensarProjetoContrato').addEventListener('click', (e) => {
+        e.target.closest('.card').remove();
+      });
     }
 
     // Excluir so e permitido em rascunho -- nesse estagio, tudo que
