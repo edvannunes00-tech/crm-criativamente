@@ -291,6 +291,12 @@
           </div>
 
           <div class="field mt-4">
+            <label class="mono-label">Valor do sinal para pagamento online (opcional)</label>
+            <input type="text" id="cSinalValor" placeholder="Ex.: 98,00" value="${contrato.sinal_valor ? String(contrato.sinal_valor).replace('.', ',') : ''}" style="max-width:160px;" ${podeMexer ? '' : 'disabled'} />
+            <p class="text-muted mt-2" style="font-size:11.5px; line-height:1.5;">Quando preenchido, depois que o cliente assinar o contrato pela página pública, aparece a opção de pagar esse valor na hora, por cartão ou Pix (Mercado Pago). Deixe em branco pra não oferecer pagamento online do sinal.</p>
+          </div>
+
+          <div class="field mt-4">
             <label class="mono-label">Início da contagem do suporte</label>
             <select id="cSuporteInicio" ${podeMexer ? '' : 'disabled'}>
               <option value="entrega" ${contrato.suporte_inicio !== 'assinatura' ? 'selected' : ''}>A partir da entrega (padrão)</option>
@@ -476,6 +482,7 @@
             suporte_inicio: document.getElementById('cSuporteInicio').value,
             condicoes_especiais: document.getElementById('cCondicoesEspeciais').value.trim() || null,
             observacoes: document.getElementById('cObservacoes').value.trim() || null,
+            sinal_valor: (() => { const v = document.getElementById('cSinalValor').value.trim(); if (!v) return null; const n = Number(v.replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) && n > 0 ? n : null; })(),
           }).eq('id', contratoId);
           btnSalvarCondicoes.disabled = false; btnSalvarCondicoes.textContent = 'Salvar condições';
           if (error) { alert('Não foi possível salvar: ' + error.message); return; }

@@ -1,0 +1,3 @@
+-- Aplicadas via apply_migration:
+-- 43: tabela crm.contrato_pagamentos_avulsos (pagamento unico do sinal, cartao ou pix) + registrar_pagamento_avulso().
+-- 44: crm.contratos.sinal_valor (valor explicito em reais, definido pelo operador; nunca calculado a partir de texto livre de condicao de pagamento).

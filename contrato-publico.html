@@ -54,6 +54,7 @@
     } catch { /* sem sessionStorage: segue so com o hash */ }
     const conteudo = document.getElementById('conteudo');
     const CHECKOUT_URL = `${SUPABASE_URL}/functions/v1/recorrencia-checkout`;
+    const SINAL_URL = `${SUPABASE_URL}/functions/v1/contrato-pagamento-sinal`;
     const totalPassos = () => (dadosContrato && dadosContrato.recorrencia ? 7 : 6);
 
     function escapeHtml(str) {
@@ -92,7 +93,10 @@
         if (!body.disponivel) { renderIndisponivel(); return; }
         dadosContrato = body.contrato;
         dadosContratada = body.contratada || null;
-        if (body.pos_confirmacao) { if (dadosContrato.recorrencia) renderPagamento(); else renderAssinatura(); return; }
+        if (body.pos_confirmacao) {
+          if (body.assinado) { renderJaAssinado(); return; }
+          if (dadosContrato.recorrencia) renderPagamento(); else renderAssinatura(); return;
+        }
         renderRevisao();
       } catch {
         conteudo.innerHTML = `<div class="error-state"><p>Não foi possível carregar o contrato agora. Tente novamente em instantes.</p></div>`;
@@ -472,6 +476,87 @@
       }
     }
 
+    async function chamarSinal(acao, extra = {}) {
+      const resp = await fetch(SINAL_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, acao, ...extra }),
+      });
+      return resp.json();
+    }
+
+    const MSG_SINAL = {
+      sem_sinal_configurado: null,
+      pagamento_nao_configurado: 'O pagamento online do sinal ainda não está disponível. Nossa equipe combina com você por outro canal.',
+      sinal_ja_pago: null,
+      falha_no_provedor: 'Não foi possível abrir o pagamento agora. Tente novamente em instantes.',
+    };
+
+    let pollingSinal = 0;
+    async function renderBlocoSinal(containerId) {
+      const alvo = document.getElementById(containerId);
+      if (!alvo) return;
+      let st;
+      try { st = await chamarSinal('status'); } catch { st = null; }
+      if (!st || !st.ok || !st.valor) { alvo.innerHTML = ''; return; }
+
+      const pg = st.pagamento;
+      const voltouDoSinal = new URLSearchParams(window.location.search).get('sinal') === 'retorno';
+
+      if (pg && pg.status === 'aprovado') {
+        alvo.innerHTML = `<div class="card mt-4" style="border-color:var(--status-sucesso);"><p style="font-size:14px; font-weight:700;">✓ Sinal de ${formatarMoeda(pg.valor)} pago (${pg.metodo === 'pix' ? 'Pix' : 'cartão'}).</p></div>`;
+        return;
+      }
+
+      if (pg && pg.status === 'pendente' && pg.checkout_url) {
+        alvo.innerHTML = `
+          <div class="card mt-4">
+            <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Sinal de ${formatarMoeda(pg.valor)}</p>
+            <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">${voltouDoSinal ? 'Estamos aguardando a confirmação do Mercado Pago. Isso pode levar alguns instantes.' : 'Pagamento iniciado, ainda não confirmado.'}</p>
+            <button class="btn btn-secondary btn-block" id="btnVerificarSinal">Verificar novamente</button>
+            <button class="btn btn-primary btn-block mt-2" id="btnContinuarSinal">Continuar para o pagamento</button>
+          </div>`;
+        document.getElementById('btnVerificarSinal').addEventListener('click', () => renderBlocoSinal(containerId));
+        document.getElementById('btnContinuarSinal').addEventListener('click', () => { window.location.href = pg.checkout_url; });
+        if (voltouDoSinal && pollingSinal < 12) { pollingSinal += 1; setTimeout(() => renderBlocoSinal(containerId), 5000); }
+        return;
+      }
+
+      alvo.innerHTML = `
+        <div class="card mt-4">
+          <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Pagar o sinal agora</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Valor: ${formatarMoeda(st.valor)}. Escolha como prefere pagar.</p>
+          <button class="btn btn-primary btn-block" id="btnSinalCartao">Pagar no cartão</button>
+          <button class="btn btn-secondary btn-block mt-2" id="btnSinalPix">Pagar no Pix</button>
+          <p class="erro-msg hidden" id="erroSinal" style="color:var(--status-erro); font-size:12.5px; margin-top:8px;"></p>
+        </div>`;
+      const iniciar = async (metodo, btn) => {
+        const erro = document.getElementById('erroSinal'); erro.classList.add('hidden');
+        btn.disabled = true; const t = btn.textContent; btn.textContent = 'Abrindo...';
+        try {
+          const r = await chamarSinal('iniciar', { metodo });
+          if (r && r.ok && r.checkout_url) { window.location.href = r.checkout_url; return; }
+          erro.textContent = (r && MSG_SINAL[r.motivo]) || 'Não foi possível iniciar o pagamento agora.';
+          erro.classList.remove('hidden');
+        } catch { erro.textContent = 'Não foi possível iniciar o pagamento agora.'; erro.classList.remove('hidden'); }
+        btn.disabled = false; btn.textContent = t;
+      };
+      document.getElementById('btnSinalCartao').addEventListener('click', (e) => iniciar('cartao', e.target));
+      document.getElementById('btnSinalPix').addEventListener('click', (e) => iniciar('pix', e.target));
+    }
+
+    function renderJaAssinado() {
+      conteudo.innerHTML = `
+        <div class="card" style="text-align:center;">
+          <div style="font-size:32px; margin-bottom:12px;">✓</div>
+          <p style="font-size:15px; font-weight:700;">Contrato assinado.</p>
+          <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">Se precisar de uma cópia do contrato, você pode solicitar a segunda via.</p>
+          <a href="/contrato-segunda-via.html" class="btn btn-secondary btn-block mt-4">Solicitar segunda via</a>
+        </div>
+        <div id="blocoSinalJaAssinado"></div>
+      `;
+      renderBlocoSinal('blocoSinalJaAssinado');
+    }
+
     function renderAssinatura(pagamentoConfirmado) {
       conteudo.innerHTML = `
         <div class="passo-label">Passo ${totalPassos()} de ${totalPassos()} — Assinatura</div>
@@ -585,7 +670,9 @@
               <p class="text-muted mt-2" style="font-size:11.5px; line-height:1.5;">Guarde este arquivo. A versão oficial também fica registrada com a Criativamente.</p>
               <p class="text-muted mt-2" id="statusCopiaEmail" style="font-size:12px; line-height:1.5;">Enviando uma cópia para o seu e-mail…</p>
             </div>
+            <div id="blocoSinalPosAssinatura"></div>
           `;
+          renderBlocoSinal('blocoSinalPosAssinatura');
           (async () => {
             const alvo = document.getElementById('statusCopiaEmail');
             try {
