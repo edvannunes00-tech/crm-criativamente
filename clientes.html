@@ -26,6 +26,20 @@
           <div class="spacer"></div>
           <button class="btn btn-primary hidden" id="btnNovoLead">+ Novo Lead</button>
         </div>
+        <div class="filter-bar" style="margin-top:8px;">
+          <select id="fFiltroSegmento" style="background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:8px 10px; color:var(--white); font-size:13px;">
+            <option value="">Todos os segmentos</option>
+          </select>
+          <select id="fFiltroOrigem" style="background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:8px 10px; color:var(--white); font-size:13px;">
+            <option value="">Todas as origens</option>
+          </select>
+          <div class="spacer"></div>
+          <select id="fOrdenar" style="background:transparent; border:1px solid var(--line-strong); border-radius:var(--radius); padding:8px 10px; color:var(--white); font-size:13px;">
+            <option value="recente">Mais recentes</option>
+            <option value="antigo">Mais antigos</option>
+            <option value="nome">Nome (A-Z)</option>
+          </select>
+        </div>
 
         <div class="table-wrap" id="tabelaWrap">
           <div style="padding:16px;">
@@ -84,18 +98,33 @@
 
     let filtroStatusAtual = '';
     let termoBusca = '';
+    let filtroSegmentoAtual = '';
+    let filtroOrigemAtual = '';
+    let ordenarAtual = 'recente';
     let segmentosMap = {};
 
     async function carregarSegmentosMap() {
-      const { data } = await supabase.from('segmentos').select('id, nome').eq('empresa_id', empresaId);
-      (data || []).forEach((s) => { segmentosMap[s.id] = s.nome; });
+      const [{ data: segmentos }, { data: origens }] = await Promise.all([
+        supabase.from('segmentos').select('id, nome').eq('empresa_id', empresaId).order('nome'),
+        supabase.from('origens_lead').select('id, nome').eq('empresa_id', empresaId).order('nome'),
+      ]);
+      (segmentos || []).forEach((s) => { segmentosMap[s.id] = s.nome; });
+      const selSegmento = document.getElementById('fFiltroSegmento');
+      selSegmento.innerHTML = '<option value="">Todos os segmentos</option>' + (segmentos || []).map((s) => `<option value="${s.id}">${escapeHtml(s.nome)}</option>`).join('');
+      const selOrigem = document.getElementById('fFiltroOrigem');
+      selOrigem.innerHTML = '<option value="">Todas as origens</option>' + (origens || []).map((o) => `<option value="${o.id}">${escapeHtml(o.nome)}</option>`).join('');
     }
 
     async function carregarLista() {
       const wrap = document.getElementById('tabelaWrap');
-      let query = supabase.from('vw_contatos_status').select('*').order('created_at', { ascending: false }).limit(200);
+      let query = supabase.from('vw_contatos_status').select('*').limit(200);
+
+      if (ordenarAtual === 'nome') query = query.order('nome', { ascending: true });
+      else query = query.order('created_at', { ascending: ordenarAtual === 'antigo' });
 
       if (filtroStatusAtual) query = query.eq('status_calculado', filtroStatusAtual);
+      if (filtroSegmentoAtual) query = query.eq('segmento_id', filtroSegmentoAtual);
+      if (filtroOrigemAtual) query = query.eq('origem_id', filtroOrigemAtual);
       if (termoBusca) query = query.or(`nome.ilike.%${termoBusca}%,whatsapp.ilike.%${termoBusca}%`);
 
       const { data, error } = await query;
@@ -106,8 +135,9 @@
         return;
       }
 
+      const temFiltroAtivo = termoBusca || filtroStatusAtual || filtroSegmentoAtual || filtroOrigemAtual;
       if (!data || data.length === 0) {
-        wrap.innerHTML = `<div class="empty-state"><div class="icon">☺</div><p>Nenhum contato encontrado ${termoBusca || filtroStatusAtual ? 'com esse filtro' : '— os leads do site aparecem aqui automaticamente'}.</p></div>`;
+        wrap.innerHTML = `<div class="empty-state"><div class="icon">☺</div><p>Nenhum contato encontrado ${temFiltroAtivo ? 'com esse filtro' : '— os leads do site aparecem aqui automaticamente'}.</p></div>`;
         return;
       }
 
@@ -142,6 +172,19 @@
       termoBusca = e.target.value.trim();
       clearTimeout(window.__buscaTimeout);
       window.__buscaTimeout = setTimeout(carregarLista, 300);
+    });
+
+    document.getElementById('fFiltroSegmento').addEventListener('change', (e) => {
+      filtroSegmentoAtual = e.target.value;
+      carregarLista();
+    });
+    document.getElementById('fFiltroOrigem').addEventListener('change', (e) => {
+      filtroOrigemAtual = e.target.value;
+      carregarLista();
+    });
+    document.getElementById('fOrdenar').addEventListener('change', (e) => {
+      ordenarAtual = e.target.value;
+      carregarLista();
     });
 
     document.querySelectorAll('#filtroStatus .tab').forEach((btn) => {
