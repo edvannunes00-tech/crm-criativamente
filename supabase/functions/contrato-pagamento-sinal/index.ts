@@ -110,13 +110,19 @@ Deno.serve(async (req: Request) => {
       ? [{ id: "credit_card" }, { id: "debit_card" }, { id: "prepaid_card" }, { id: "ticket" }, { id: "atm" }]
       : [{ id: "bank_transfer" }, { id: "ticket" }, { id: "atm" }];
 
+    // No cartao, deixa o Mercado Pago oferecer as opcoes de parcelamento do proprio cartao do
+    // cliente (o valor aprovado continua sendo o total -- o parcelamento e so entre o cliente e
+    // a operadora do cartao). No Pix nao existe parcelamento, entao fixa em 1 (nao faz diferenca).
+    const payment_methods: Row = { excluded_payment_types: excluidos };
+    if (metodo === "pix") payment_methods.installments = 1;
+
     const resp = await fetch(`${MP_API}/checkout/preferences`, {
       method: "POST",
       headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         items: [{ title: `Sinal — ${ctx.contrato.titulo}`, quantity: 1, unit_price: Number(ctx.contrato.sinal_valor), currency_id: "BRL" }],
         external_reference: novo.id,
-        payment_methods: { excluded_payment_types: excluidos, installments: 1 },
+        payment_methods,
         back_urls: {
           success: `${SITE_URL}/contrato-publico.html?sinal=retorno&ref=${novo.id}`,
           pending: `${SITE_URL}/contrato-publico.html?sinal=retorno&ref=${novo.id}`,
