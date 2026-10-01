@@ -93,13 +93,21 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: inviteError.message }, 400);
     }
 
-    // Registra o convite na tabela de acompanhamento (schema crm)
-    await supabaseAdmin.from("convites_usuario").insert({
+    // Registra o convite na tabela de acompanhamento (schema crm). O convite ja foi disparado
+    // de verdade nesse ponto -- se esse insert falhar (ex: grant faltando), nao finge sucesso
+    // silenciosamente: avisa explicitamente que o convite saiu mas o rastreamento falhou.
+    const { error: trackError } = await supabaseAdmin.from("convites_usuario").insert({
       empresa_id,
       email,
       papel_id,
       convidado_por: userData.user.id,
     });
+    if (trackError) {
+      return jsonResponse(
+        { error: `Convite enviado, mas falhou ao registrar o acompanhamento: ${trackError.message}` },
+        207
+      );
+    }
 
     return jsonResponse({ success: true, user: inviteData.user }, 200);
   } catch (err) {
