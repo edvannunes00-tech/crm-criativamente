@@ -105,6 +105,12 @@
       contato = data.contatos || {};
       document.getElementById('headerContainer').querySelector('.header-title').textContent = data.titulo;
 
+      let nomeAutor = '';
+      if (data.criado_por) {
+        const { data: autor } = await supabase.from('usuarios').select('nome').eq('id', data.criado_por).maybeSingle();
+        nomeAutor = autor ? autor.nome : '';
+      }
+
       const podeCancelar = (podeEditar || podeAdministrar) && !['cancelado'].includes(data.status) && data.status !== 'rascunho';
       const podeExcluirRascunho = podeExcluir && data.status === 'rascunho';
       const podeRegistrarEnvio = editavel() && ['rascunho', 'enviado'].includes(data.status);
@@ -119,6 +125,7 @@
                 ${data.oportunidade_id ? ` &nbsp;·&nbsp; <a href="/ficha-oportunidade.html?id=${data.oportunidade_id}" style="color:var(--white); text-decoration:underline;">Ver oportunidade</a>` : ''}
                 ${data.projeto_id ? ` &nbsp;·&nbsp; <a href="/ficha-projeto.html?id=${data.projeto_id}" style="color:var(--white); text-decoration:underline;">Ver projeto</a>` : ''}
               </div>
+              ${nomeAutor ? `<div class="text-muted mt-1" style="font-size:11.5px;">Criado por ${escapeHtml(nomeAutor)}</div>` : ''}
             </div>
             <div class="cab-acoes">
               <span class="badge ${STATUS_BADGE[data.status] || 'dot-neutro'}"><span class="dot"></span>${STATUS_LABEL[data.status] || data.status}</span>
