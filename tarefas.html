@@ -89,6 +89,11 @@
           <input type="hidden" id="fVinculoId" />
           <div id="vinculoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
         </div>
+        <div class="field">
+          <label class="mono-label">Observações</label>
+          <textarea id="fObservacoes" rows="3"></textarea>
+        </div>
+        <div id="tarefaCarimboTempo" class="mb-3 text-muted" style="font-size:12px;"></div>
         <button type="submit" class="btn btn-primary btn-block" id="btnSalvarTarefa">Criar Tarefa</button>
       </form>
     </div>
@@ -98,7 +103,7 @@
     import { supabase } from '/src/lib/supabaseClient.js';
     import { handleQueryError } from '/src/lib/session.js';
     import { initPage } from '/src/lib/pageInit.js';
-    import { formatarData, escapeHtml } from '/src/lib/format.js';
+    import { formatarData, tempoRelativo, escapeHtml } from '/src/lib/format.js';
 
     const { perm, session } = await initPage({ paginaAtual: 'tarefas.html', breadcrumb: 'CRM / Tarefas', title: 'Tarefas' });
     const empresaId = perm ? perm.empresa_id : null;
@@ -142,6 +147,7 @@
             <div class="tarefa-meta">
               ${t.vinculo_tipo ? `<span class="badge dot-info"><span class="dot"></span>${VINCULO_LABEL[t.vinculo_tipo] || t.vinculo_tipo}</span>` : ''}
               ${t.prazo ? `<span class="cell-muted ${atrasada ? 'prazo-atrasado' : ''}" style="font-family:var(--font-mono); font-size:12px;">${formatarData(t.prazo)}</span>` : ''}
+              <span class="cell-muted" style="font-size:11.5px;" title="Atualizada em ${formatarData(t.updated_at, true)}">atualizada ${tempoRelativo(t.updated_at)}</span>
               <button class="btn-icone btn-editar-tarefa" data-id="${t.id}" title="Editar">✎</button>
               <button class="btn-icone btn-excluir-tarefa" data-id="${t.id}" title="Excluir">✕</button>
             </div>
@@ -184,8 +190,30 @@
       document.getElementById('fTitulo').value = t.titulo;
       document.getElementById('fPrioridade').value = t.prioridade || 'media';
       document.getElementById('fPrazo').value = t.prazo ? t.prazo.slice(0, 10) : '';
+      document.getElementById('fObservacoes').value = t.observacoes || '';
+      document.getElementById('tarefaCarimboTempo').textContent =
+        `Criada em ${formatarData(t.created_at, true)} · Atualizada em ${formatarData(t.updated_at, true)}`;
+
       document.getElementById('fVinculoTipo').value = t.vinculo_tipo || '';
-      document.getElementById('campoVinculoBusca').classList.toggle('hidden', !t.vinculo_tipo);
+      const campoVinculo = document.getElementById('campoVinculoBusca');
+      campoVinculo.classList.toggle('hidden', !t.vinculo_tipo);
+      document.getElementById('fVinculoId').value = t.vinculo_id || '';
+      document.getElementById('fBuscaVinculo').value = '';
+      document.getElementById('vinculoSelecionado').textContent = '';
+
+      // O vínculo já salvo não traz o nome junto (só o id) -- busca o nome pra
+      // não aparecer em branco como se o vínculo tivesse sumido.
+      const conf = TABELA_POR_TIPO[t.vinculo_tipo];
+      if (conf && t.vinculo_id) {
+        const { data } = await supabase.from(conf.tabela).select(`id, ${conf.campo}`).eq('id', t.vinculo_id).maybeSingle();
+        if (data) {
+          document.getElementById('fBuscaVinculo').value = data[conf.campo];
+          document.getElementById('vinculoSelecionado').textContent = `Selecionado: ${data[conf.campo]}`;
+        } else {
+          document.getElementById('vinculoSelecionado').textContent = 'Vínculo original não encontrado (pode ter sido excluído) — busque de novo se quiser trocar.';
+        }
+      }
+
       overlay.classList.remove('hidden');
     }
 
@@ -214,6 +242,9 @@
       document.getElementById('modalTituloTarefa').textContent = 'Nova Tarefa';
       document.getElementById('btnSalvarTarefa').textContent = 'Criar Tarefa';
       document.getElementById('campoVinculoBusca').classList.add('hidden');
+      document.getElementById('fVinculoId').value = '';
+      document.getElementById('vinculoSelecionado').textContent = '';
+      document.getElementById('tarefaCarimboTempo').textContent = '';
       overlay.classList.remove('hidden');
     });
     document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
@@ -273,6 +304,7 @@
         titulo: document.getElementById('fTitulo').value.trim(),
         prioridade: document.getElementById('fPrioridade').value,
         prazo: document.getElementById('fPrazo').value || null,
+        observacoes: document.getElementById('fObservacoes').value.trim() || null,
         vinculo_tipo: vinculoTipo,
         vinculo_id: vinculoTipo ? vinculoId : null,
       };
