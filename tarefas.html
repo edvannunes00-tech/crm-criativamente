@@ -403,30 +403,42 @@
       return usuariosMap;
     }
 
-    async function carregarNotas(tarefaId, observacaoAntiga) {
+    const ROTULO_TIPO_ATIVIDADE = {
+      nota: null, // nota usa o próprio texto, sem rótulo extra
+      tarefa_concluida: '✓ Concluída',
+      tarefa_reaberta: '↺ Reaberta',
+    };
+
+    async function carregarNotas(tarefaId, observacaoAntiga, criadaEm) {
       const lista = document.getElementById('listaNotas');
       lista.innerHTML = `<div class="text-muted" style="font-size:12px;">Carregando...</div>`;
       const nomes = await nomesUsuarios();
-      const { data } = await supabase.from('atividades').select('*').eq('tarefa_id', tarefaId).eq('tipo', 'nota').order('created_at', { ascending: false });
+      const { data } = await supabase.from('atividades').select('*').eq('tarefa_id', tarefaId).in('tipo', ['nota', 'tarefa_concluida', 'tarefa_reaberta']).order('created_at', { ascending: false });
 
-      const notas = data || [];
+      const eventos = data || [];
+      // A observação antiga (campo único de antes) não tem data própria -- usa a
+      // data de criação da tarefa como melhor estimativa, deixando isso explícito.
       const legado = observacaoAntiga
-        ? `<div class="timeline-item"><div class="ts">Observação original</div><div class="desc">${escapeHtml(observacaoAntiga)}</div></div>`
+        ? `<div class="timeline-item"><div class="ts">${criadaEm ? formatarData(criadaEm, true) : ''} · observação original (sem hora exata)</div><div class="desc">${escapeHtml(observacaoAntiga)}</div></div>`
         : '';
 
-      if (notas.length === 0 && !legado) {
+      if (eventos.length === 0 && !legado) {
         lista.innerHTML = `<div class="text-muted" style="font-size:12px;">Nenhuma nota registrada ainda.</div>`;
         return;
       }
 
       lista.innerHTML = `
         <div class="timeline">
-          ${notas.map((n) => `
-            <div class="timeline-item">
-              <div class="ts">${formatarData(n.created_at, true)}${n.usuario_id && nomes[n.usuario_id] ? ` · ${escapeHtml(nomes[n.usuario_id])}` : ''}</div>
-              <div class="desc">${escapeHtml(n.descricao || '')}</div>
-            </div>
-          `).join('')}
+          ${eventos.map((n) => {
+            const autor = n.usuario_id && nomes[n.usuario_id] ? ` · ${escapeHtml(nomes[n.usuario_id])}` : '';
+            const rotulo = ROTULO_TIPO_ATIVIDADE[n.tipo];
+            return `
+              <div class="timeline-item">
+                <div class="ts">${formatarData(n.created_at, true)}${autor}${rotulo ? ` · ${rotulo}` : ''}</div>
+                ${n.tipo === 'nota' ? `<div class="desc">${escapeHtml(n.descricao || '')}</div>` : ''}
+              </div>
+            `;
+          }).join('')}
           ${legado}
         </div>
       `;
@@ -448,7 +460,7 @@
 
       document.getElementById('fNovaNota').value = '';
       const t = tarefasCache.find((x) => x.id === tarefaId);
-      await carregarNotas(tarefaId, t ? t.observacoes : null);
+      await carregarNotas(tarefaId, t ? t.observacoes : null, t ? t.created_at : null);
     });
 
     // ---------------- MODAL EDIÇÃO (compartilhado pelas duas visões) ----------------
@@ -465,7 +477,7 @@
         `Criada em ${formatarData(t.created_at, true)} · Atualizada em ${formatarData(t.updated_at, true)}`;
 
       document.getElementById('blocoNotas').classList.remove('hidden');
-      await carregarNotas(t.id, t.observacoes);
+      await carregarNotas(t.id, t.observacoes, t.created_at);
 
       const btnConcluir = document.getElementById('btnConcluirTarefa');
       btnConcluir.classList.remove('hidden');
