@@ -134,7 +134,10 @@
           <div id="vinculoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
         </div>
         <div id="tarefaCarimboTempo" class="mb-3 text-muted" style="font-size:12px;"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="btnSalvarTarefa">Criar Tarefa</button>
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary btn-block" id="btnSalvarTarefa">Criar Tarefa</button>
+          <button type="button" class="btn btn-secondary hidden" id="btnConcluirTarefa" style="white-space:nowrap;">Concluir ✓</button>
+        </div>
       </form>
 
       <div id="blocoNotas" class="hidden" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
@@ -464,6 +467,11 @@
       document.getElementById('blocoNotas').classList.remove('hidden');
       await carregarNotas(t.id, t.observacoes);
 
+      const btnConcluir = document.getElementById('btnConcluirTarefa');
+      btnConcluir.classList.remove('hidden');
+      btnConcluir.textContent = t.status === 'concluida' ? 'Reabrir' : 'Concluir ✓';
+      btnConcluir.dataset.statusAlvo = t.status === 'concluida' ? 'pendente' : 'concluida';
+
       document.getElementById('fVinculoTipo').value = t.vinculo_tipo || '';
       const campoVinculo = document.getElementById('campoVinculoBusca');
       campoVinculo.classList.toggle('hidden', !t.vinculo_tipo);
@@ -535,10 +543,23 @@
       document.getElementById('vinculoSelecionado').textContent = '';
       document.getElementById('tarefaCarimboTempo').textContent = '';
       document.getElementById('blocoNotas').classList.add('hidden');
+      document.getElementById('btnConcluirTarefa').classList.add('hidden');
       overlay.classList.remove('hidden');
     });
     document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+    document.getElementById('btnConcluirTarefa').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const tarefaId = document.getElementById('tarefaIdEmEdicao').value;
+      if (!tarefaId) return;
+      btn.disabled = true;
+      const { error } = await supabase.from('tarefas').update({ status: btn.dataset.statusAlvo }).eq('id', tarefaId);
+      btn.disabled = false;
+      if (error) { alert('Não foi possível atualizar o status agora.'); return; }
+      overlay.classList.add('hidden');
+      await carregarDados();
+    });
 
     document.getElementById('fVinculoTipo').addEventListener('change', (e) => {
       const campo = document.getElementById('campoVinculoBusca');
