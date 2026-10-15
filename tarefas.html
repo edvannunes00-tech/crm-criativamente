@@ -113,13 +113,18 @@
           <input type="hidden" id="fVinculoId" />
           <div id="vinculoSelecionado" class="mt-2 text-muted" style="font-size:12.5px;"></div>
         </div>
-        <div class="field">
-          <label class="mono-label">Observações</label>
-          <textarea id="fObservacoes" rows="3"></textarea>
-        </div>
         <div id="tarefaCarimboTempo" class="mb-3 text-muted" style="font-size:12px;"></div>
         <button type="submit" class="btn btn-primary btn-block" id="btnSalvarTarefa">Criar Tarefa</button>
       </form>
+
+      <div id="blocoNotas" class="hidden" style="margin-top:20px; border-top:1px solid var(--line); padding-top:16px;">
+        <span class="mono-label">Notas</span>
+        <div id="listaNotas" class="mt-2" style="max-height:220px; overflow-y:auto;"></div>
+        <div class="field mt-3">
+          <textarea id="fNovaNota" rows="2" placeholder="Escreva uma nota e registre — fica salva com data e hora, sem apagar as anteriores."></textarea>
+        </div>
+        <button type="button" class="btn btn-secondary btn-block" id="btnAdicionarNota">Registrar nota</button>
+      </div>
     </div>
   </div>
 
@@ -292,6 +297,64 @@
       });
     }
 
+    // ---------------- NOTAS (registro tipo Salesforce/Trello, não apaga as anteriores) ----------------
+    let usuariosMap = null;
+    async function nomesUsuarios() {
+      if (usuariosMap) return usuariosMap;
+      const { data } = await supabase.from('usuarios').select('id, nome');
+      usuariosMap = {};
+      (data || []).forEach((u) => { usuariosMap[u.id] = u.nome; });
+      return usuariosMap;
+    }
+
+    async function carregarNotas(tarefaId, observacaoAntiga) {
+      const lista = document.getElementById('listaNotas');
+      lista.innerHTML = `<div class="text-muted" style="font-size:12px;">Carregando...</div>`;
+      const nomes = await nomesUsuarios();
+      const { data } = await supabase.from('atividades').select('*').eq('tarefa_id', tarefaId).eq('tipo', 'nota').order('created_at', { ascending: false });
+
+      const notas = data || [];
+      const legado = observacaoAntiga
+        ? `<div class="timeline-item"><div class="ts">Observação original</div><div class="desc">${escapeHtml(observacaoAntiga)}</div></div>`
+        : '';
+
+      if (notas.length === 0 && !legado) {
+        lista.innerHTML = `<div class="text-muted" style="font-size:12px;">Nenhuma nota registrada ainda.</div>`;
+        return;
+      }
+
+      lista.innerHTML = `
+        <div class="timeline">
+          ${notas.map((n) => `
+            <div class="timeline-item">
+              <div class="ts">${formatarData(n.created_at, true)}${n.usuario_id && nomes[n.usuario_id] ? ` · ${escapeHtml(nomes[n.usuario_id])}` : ''}</div>
+              <div class="desc">${escapeHtml(n.descricao || '')}</div>
+            </div>
+          `).join('')}
+          ${legado}
+        </div>
+      `;
+    }
+
+    document.getElementById('btnAdicionarNota').addEventListener('click', async () => {
+      const tarefaId = document.getElementById('tarefaIdEmEdicao').value;
+      const texto = document.getElementById('fNovaNota').value.trim();
+      if (!tarefaId || !texto) return;
+      const btn = document.getElementById('btnAdicionarNota');
+      btn.disabled = true; btn.textContent = 'Registrando...';
+
+      const { error } = await supabase.from('atividades').insert({
+        empresa_id: empresaId, tarefa_id: tarefaId, tipo: 'nota', titulo: 'Nota', descricao: texto, usuario_id: meuId,
+      });
+
+      btn.disabled = false; btn.textContent = 'Registrar nota';
+      if (error) { alert('Não foi possível registrar a nota agora.'); return; }
+
+      document.getElementById('fNovaNota').value = '';
+      const t = tarefasCache.find((x) => x.id === tarefaId);
+      await carregarNotas(tarefaId, t ? t.observacoes : null);
+    });
+
     // ---------------- MODAL EDIÇÃO (compartilhado pelas duas visões) ----------------
     async function abrirModalEdicaoTarefa(tarefaId) {
       const t = tarefasCache.find((x) => x.id === tarefaId);
@@ -302,9 +365,11 @@
       document.getElementById('fTitulo').value = t.titulo;
       document.getElementById('fPrioridade').value = t.prioridade || 'media';
       document.getElementById('fPrazo').value = t.prazo ? t.prazo.slice(0, 10) : '';
-      document.getElementById('fObservacoes').value = t.observacoes || '';
       document.getElementById('tarefaCarimboTempo').textContent =
         `Criada em ${formatarData(t.created_at, true)} · Atualizada em ${formatarData(t.updated_at, true)}`;
+
+      document.getElementById('blocoNotas').classList.remove('hidden');
+      await carregarNotas(t.id, t.observacoes);
 
       document.getElementById('fVinculoTipo').value = t.vinculo_tipo || '';
       const campoVinculo = document.getElementById('campoVinculoBusca');
@@ -376,6 +441,7 @@
       document.getElementById('fVinculoId').value = '';
       document.getElementById('vinculoSelecionado').textContent = '';
       document.getElementById('tarefaCarimboTempo').textContent = '';
+      document.getElementById('blocoNotas').classList.add('hidden');
       overlay.classList.remove('hidden');
     });
     document.getElementById('btnFecharModal').addEventListener('click', () => overlay.classList.add('hidden'));
@@ -435,7 +501,6 @@
         titulo: document.getElementById('fTitulo').value.trim(),
         prioridade: document.getElementById('fPrioridade').value,
         prazo: document.getElementById('fPrazo').value || null,
-        observacoes: document.getElementById('fObservacoes').value.trim() || null,
         vinculo_tipo: vinculoTipo,
         vinculo_id: vinculoTipo ? vinculoId : null,
       };
