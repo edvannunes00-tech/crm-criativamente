@@ -11,12 +11,25 @@
   <style>
     body { background: var(--black); }
     .publico-shell { max-width: 640px; margin: 0 auto; padding: 32px 20px 80px; }
-    .publico-logo { font-family: var(--font-mono); font-weight: 800; font-size: 18px; margin-bottom: 24px; text-align: center; }
+    .publico-logo { font-family: var(--font-mono); font-weight: 800; font-size: 18px; margin-bottom: 28px; text-align: center; }
     .publico-logo .dot { color: var(--accent); }
+
+    /* Cabeçalho de passo: barra de progresso + título editorial grande,
+       reaproveitado por todos os renderX() no lugar do antigo .passo-label sozinho. */
+    .passo-cabecalho { margin-bottom: 20px; }
+    .passo-eyebrow { font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    .passo-barra { display: flex; gap: 4px; margin-bottom: 18px; }
+    .passo-barra span { height: 3px; flex: 1; border-radius: 2px; background: var(--line-strong); }
+    .passo-barra span.feito { background: var(--accent); }
+    .passo-titulo { font-family: var(--font-display); font-weight: 800; font-size: 24px; line-height: 1.3; color: var(--white); }
+    .passo-subtitulo { font-size: 13px; color: var(--gray-1); margin-top: 6px; line-height: 1.6; }
+
     .passo-label { font-family: var(--font-mono); font-size: 11px; color: var(--gray-2); text-transform: uppercase; margin-bottom: 8px; }
-    .resumo-linha { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+    .resumo-linha { display: flex; justify-content: space-between; padding: 10px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
     .resumo-linha:last-child { border-bottom: none; }
-    .item-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; }
+    .resumo-linha > span:last-child { font-family: var(--font-mono); }
+    .item-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; background: var(--near-black); }
+    .item-card .valor { font-family: var(--font-mono); font-weight: 700; color: var(--accent); }
     .step-hidden { display: none; }
     .escopo-linha { font-size: 13.5px; line-height: 1.6; margin-top: 6px; }
     .escopo-linha strong { font-weight: 700; }
@@ -60,6 +73,23 @@
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Cabeçalho visual de cada passo (barra de progresso + título grande), reaproveitado
+    // por todo render*() no lugar do antigo ".passo-label" sozinho. Puramente visual --
+    // não interfere em nenhuma lógica de dados/pagamento/assinatura.
+    function cabecalhoPasso(passoAtual, eyebrow, titulo, subtitulo) {
+      const total = totalPassos();
+      let segmentos = '';
+      for (let i = 1; i <= total; i++) segmentos += `<span class="${i <= passoAtual ? 'feito' : ''}"></span>`;
+      return `
+        <div class="passo-cabecalho">
+          <div class="passo-eyebrow">${escapeHtml(eyebrow)} · passo ${passoAtual} de ${total}</div>
+          <div class="passo-barra">${segmentos}</div>
+          <div class="passo-titulo">${titulo}</div>
+          ${subtitulo ? `<div class="passo-subtitulo">${escapeHtml(subtitulo)}</div>` : ''}
+        </div>
+      `;
     }
 
     const ROTULO_INCLUSAO = { incluido: 'Incluído', nao_incluido: 'Não incluído', adicional: 'Contratação adicional (fora deste escopo)' };
@@ -135,12 +165,12 @@
     function renderRevisao() {
       const c = dadosContrato;
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 1 de ${totalPassos()} — O que você está contratando</div>
+        ${cabecalhoPasso(1, 'o que você está contratando', escapeHtml(c.titulo))}
         <div class="card mb-4">
-          <div style="font-size:17px; font-weight:800; margin-bottom:12px;">${escapeHtml(c.titulo)}</div>
+          <div class="mono-label" style="margin-bottom:10px;">Itens</div>
           ${(c.itens || []).map((i) => `
             <div class="item-card">
-              <div class="flex items-center justify-between"><span>${escapeHtml(i.descricao)} ${i.quantidade > 1 ? `(x${i.quantidade})` : ''}</span><span style="font-weight:700;">${formatarMoeda(i.valor_total)}</span></div>
+              <div class="flex items-center justify-between"><span>${escapeHtml(i.descricao)} ${i.quantidade > 1 ? `(x${i.quantidade})` : ''}</span><span class="valor">${formatarMoeda(i.valor_total)}</span></div>
             </div>
           `).join('')}
           <div class="mt-4">
@@ -159,7 +189,7 @@
 
     function renderFormularioDados() {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 2 de ${totalPassos()} — Seus dados</div>
+        ${cabecalhoPasso(2, 'seus dados', 'Quem está contratando?')}
         <div class="card">
           <form id="formDados">
             <div class="field"><label class="mono-label">Nome completo *</label><input type="text" id="dNome" required /></div>
@@ -236,7 +266,7 @@
     function renderEscopo() {
       const itens = dadosContrato.itens || [];
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 3 de ${totalPassos()} — Escopo contratado</div>
+        ${cabecalhoPasso(3, 'escopo contratado', 'O que está incluído')}
         <div class="card">
           ${itens.map((i) => `
             <div class="mb-4">
@@ -288,9 +318,8 @@
       });
 
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 4 de ${totalPassos()} — Contrato completo</div>
+        ${cabecalhoPasso(4, 'contrato completo', 'Leia com calma', 'Este é exatamente o texto que também vai compor o documento final (PDF).')}
         <div class="card">
-          <p style="font-size:13px; margin-bottom:10px;">Leia o contrato completo antes de prosseguir. Este é exatamente o texto que também vai compor o documento final (PDF).</p>
           <div class="contrato-texto">
             ${clausulasDoContrato(ctx).map((c) => `<h4>${escapeHtml(c.titulo)}</h4><p>${escapeHtml(c.texto(ctx))}</p>`).join('')}
           </div>
@@ -317,9 +346,8 @@
 
     function renderConfirmacao(dados) {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo 5 de ${totalPassos()} — Confirmação</div>
+        ${cabecalhoPasso(5, 'confirmação', 'Revise rapidamente')}
         <div class="card">
-          <p style="font-size:14px; margin-bottom:8px;">Revise rapidamente:</p>
           <div class="resumo-linha"><span>Nome</span><span>${escapeHtml(dados.nome_completo)}</span></div>
           ${dados.empresa_marca ? `<div class="resumo-linha"><span>Empresa</span><span>${escapeHtml(dados.empresa_marca)}</span></div>` : ''}
           <div class="resumo-linha"><span>CPF/CNPJ</span><span>${escapeHtml(dados.cpf_cnpj)}</span></div>
@@ -402,8 +430,8 @@
     }
 
     async function renderPagamento() {
-      const rotulo = `Passo 6 de ${totalPassos()} — Pagamento`;
-      conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="skeleton" style="height:160px;"></div>`;
+      const rotulo = cabecalhoPasso(6, 'pagamento', 'Como vamos cobrar a recorrência?');
+      conteudo.innerHTML = `${rotulo}<div class="skeleton" style="height:160px;"></div>`;
       let st;
       try { st = await chamarCheckout('status'); } catch { st = null; }
       if (!st || !st.ok) { renderIndisponivel(); return; }
@@ -412,7 +440,7 @@
       const voltouDoCheckout = new URLSearchParams(window.location.search).get('pagamento') === 'retorno';
 
       if (!st.configurado && !a) {
-        conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="card"><p style="font-size:14px; line-height:1.6;">${MSG_MOTIVO.pagamento_nao_configurado}</p></div>`;
+        conteudo.innerHTML = `${rotulo}<div class="card"><p style="font-size:14px; line-height:1.6;">${MSG_MOTIVO.pagamento_nao_configurado}</p></div>`;
         return;
       }
 
@@ -426,14 +454,14 @@
       }
 
       if (a && (a.status_financeiro === 'pendente' || a.status_financeiro === 'inadimplente')) {
-        conteudo.innerHTML = `<div class="passo-label">${rotulo}</div><div class="card"><p style="font-size:14px; line-height:1.6;">Há uma cobrança pendente para esta assinatura. Ela ainda não foi confirmada pelo Mercado Pago.</p><button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button></div>`;
+        conteudo.innerHTML = `${rotulo}<div class="card"><p style="font-size:14px; line-height:1.6;">Há uma cobrança pendente para esta assinatura. Ela ainda não foi confirmada pelo Mercado Pago.</p><button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button></div>`;
         document.getElementById('btnVerificar').addEventListener('click', renderPagamento);
         return;
       }
 
       if (a && a.status_financeiro === 'aguardando_pagamento' && a.tem_checkout) {
         conteudo.innerHTML = `
-          <div class="passo-label">${rotulo}</div>
+          ${rotulo}
           <div class="card">
             <p style="font-size:14px; line-height:1.6;">${voltouDoCheckout ? 'Estamos aguardando a confirmação do Mercado Pago. Isso pode levar alguns instantes.' : 'Seu pagamento ainda não foi confirmado.'}</p>
             <button class="btn btn-secondary btn-block mt-4" id="btnVerificar">Verificar novamente</button>
@@ -451,7 +479,7 @@
       const cheioAnual = Number(v.mensal) * 12;
       const descontoAnual = cheioAnual > 0 && Number(v.anual) > 0 && Number(v.anual) < cheioAnual ? Math.round((1 - Number(v.anual) / cheioAnual) * 100) : 0;
       conteudo.innerHTML = `
-        <div class="passo-label">${rotulo}</div>
+        ${rotulo}
         <div class="card">
           <p style="font-size:15px; font-weight:700; margin-bottom:6px;">Escolha como deseja contratar</p>
           <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">${escapeHtml(textoServicoRecorrente())}</p>
@@ -559,7 +587,7 @@
 
     function renderAssinatura(pagamentoConfirmado) {
       conteudo.innerHTML = `
-        <div class="passo-label">Passo ${totalPassos()} de ${totalPassos()} — Assinatura</div>
+        ${cabecalhoPasso(totalPassos(), 'assinatura', 'Falta só isso')}
         <div class="card">
           ${pagamentoConfirmado ? '<p class="text-muted" style="font-size:12.5px; margin-bottom:10px;">✓ Pagamento recorrente confirmado pelo Mercado Pago.</p>' : ''}
           <p style="font-size:13.5px; margin-bottom:12px;">Desenhe sua assinatura na área abaixo (com o dedo no celular, ou com o mouse/trackpad no computador).</p>
