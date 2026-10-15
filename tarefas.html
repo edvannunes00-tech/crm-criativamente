@@ -36,6 +36,23 @@
     .kanban-card .atualizada { color: var(--gray-2); font-size: 11px; margin-top: 6px; }
     .kanban-card .btn-excluir-card { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--gray-2); cursor: pointer; font-size: 12px; line-height: 1; padding: 2px; }
     .kanban-card .btn-excluir-card:hover { color: var(--status-erro); }
+    .kanban-card .btn-concluir-card { position: absolute; top: 8px; right: 26px; background: none; border: none; color: var(--gray-2); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px; }
+    .kanban-card .btn-concluir-card:hover { color: var(--status-sucesso); }
+
+    .resumo-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .resumo-chip { background: var(--near-black); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: var(--radius); padding: 9px 14px; cursor: pointer; min-width: 120px; text-align: left; }
+    .resumo-chip:hover { border-color: var(--line-strong); }
+    .resumo-chip.ativo { background: rgba(156,255,25,0.06); }
+    .resumo-chip .n { font-size: 20px; font-weight: 800; }
+    .resumo-chip .l { font-size: 11px; color: var(--gray-2); text-transform: uppercase; letter-spacing: .03em; margin-top: 2px; }
+    .resumo-chip.erro { border-left-color: var(--status-erro); }
+    .resumo-chip.alerta { border-left-color: var(--status-alerta); }
+    .resumo-chip.info { border-left-color: var(--status-info); }
+    .resumo-chip.sucesso { border-left-color: var(--status-sucesso); }
+    .resumo-detalhe { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; margin: -4px 0 14px; font-size: 13px; }
+    .resumo-detalhe .item { padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .resumo-detalhe .item:last-child { border-bottom: none; }
+    .resumo-detalhe .item:hover { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -62,6 +79,9 @@
           <div class="spacer"></div>
           <button class="btn btn-primary" id="btnNovaTarefa">+ Nova Tarefa</button>
         </div>
+
+        <div class="resumo-bar" id="resumoBar"></div>
+        <div class="resumo-detalhe hidden" id="resumoDetalhe"></div>
 
         <div id="areaKanban"><div class="skeleton" style="height:400px;"></div></div>
         <div class="card hidden" id="listaTarefas" style="padding:0;"></div>
@@ -178,14 +198,80 @@
       tarefasCache = data || [];
       renderKanban();
       renderLista();
+      renderResumo();
+    }
+
+    // ---------------- RESUMO DE PRAZOS ----------------
+    let resumoAberto = null;
+
+    function diasAte(prazoIso) {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      const prazo = new Date(prazoIso + 'T00:00:00');
+      return Math.round((prazo - hoje) / 86400000);
+    }
+
+    function calcularBaldes() {
+      const abertas = tarefasCache.filter((t) => t.status !== 'concluida');
+      const baldes = { atrasadas: [], ate3: [], ate7: [], emDia: [] };
+      abertas.forEach((t) => {
+        if (!t.prazo) { baldes.emDia.push(t); return; }
+        const dias = diasAte(t.prazo.slice(0, 10));
+        if (dias < 0) baldes.atrasadas.push(t);
+        else if (dias <= 3) baldes.ate3.push(t);
+        else if (dias <= 7) baldes.ate7.push(t);
+        else baldes.emDia.push(t);
+      });
+      return baldes;
+    }
+
+    function renderResumo() {
+      const baldes = calcularBaldes();
+      const chips = [
+        { chave: 'atrasadas', classe: 'erro', label: 'Atrasadas', itens: baldes.atrasadas },
+        { chave: 'ate3', classe: 'alerta', label: 'Vencem em até 3 dias', itens: baldes.ate3 },
+        { chave: 'ate7', classe: 'info', label: 'Vencem em até 7 dias', itens: baldes.ate7 },
+        { chave: 'emDia', classe: 'sucesso', label: 'Em dia / sem prazo', itens: baldes.emDia },
+      ];
+
+      document.getElementById('resumoBar').innerHTML = chips.map((c) => `
+        <button class="resumo-chip ${c.classe} ${resumoAberto === c.chave ? 'ativo' : ''}" data-chave="${c.chave}">
+          <div class="n">${c.itens.length}</div>
+          <div class="l">${c.label}</div>
+        </button>
+      `).join('');
+
+      document.querySelectorAll('.resumo-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          resumoAberto = resumoAberto === chip.dataset.chave ? null : chip.dataset.chave;
+          renderResumo();
+        });
+      });
+
+      const detalhe = document.getElementById('resumoDetalhe');
+      if (!resumoAberto) { detalhe.classList.add('hidden'); detalhe.innerHTML = ''; return; }
+      const balde = chips.find((c) => c.chave === resumoAberto);
+      detalhe.classList.remove('hidden');
+      detalhe.innerHTML = balde.itens.length === 0
+        ? `<div class="text-muted" style="font-size:12.5px;">Nenhuma tarefa aqui.</div>`
+        : balde.itens.map((t) => `
+            <div class="item" data-id="${t.id}">
+              ${escapeHtml(t.titulo)}
+              ${t.prazo ? `<span class="cell-muted" style="font-family:var(--font-mono); font-size:11.5px; float:right;">${formatarData(t.prazo)}</span>` : ''}
+            </div>
+          `).join('');
+      detalhe.querySelectorAll('.item').forEach((item) => {
+        item.addEventListener('click', () => abrirModalEdicaoTarefa(item.dataset.id));
+      });
     }
 
     // ---------------- QUADRO (Kanban) ----------------
     function cardHtml(t) {
       const atrasada = ehAtrasada(t);
+      const feita = t.status === 'concluida';
       return `
         <div class="kanban-card prioridade-${t.prioridade || 'media'}" draggable="true" data-id="${t.id}">
           <button class="btn-excluir-card" data-id="${t.id}" title="Excluir">✕</button>
+          ${!feita ? `<button class="btn-concluir-card" data-id="${t.id}" title="Concluir">✓</button>` : ''}
           <div class="titulo">${escapeHtml(t.titulo)}</div>
           ${t.observacoes ? `<div class="obs-preview">${escapeHtml(t.observacoes)}</div>` : ''}
           <div class="linha-meta">${metaBadges(t)}</div>
@@ -230,6 +316,13 @@
           e.stopPropagation();
           if (!confirm('Excluir esta tarefa?')) return;
           const { error } = await supabase.from('tarefas').delete().eq('id', btn.dataset.id);
+          if (!error) carregarDados();
+        });
+      });
+      document.querySelectorAll('.btn-concluir-card').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const { error } = await supabase.from('tarefas').update({ status: 'concluida' }).eq('id', btn.dataset.id);
           if (!error) carregarDados();
         });
       });
