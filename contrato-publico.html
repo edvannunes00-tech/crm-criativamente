@@ -426,6 +426,7 @@
     function textoServicoRecorrente() {
       const item = ((dadosContrato && dadosContrato.itens) || []).find((i) => i.recorrencia_tipo);
       if (item && item.recorrencia_tipo === 'gestao_trafego') return 'Gestão de tráfego pago (Meta, Google e TikTok Ads). A verba de anúncios é paga por você diretamente às plataformas e não está inclusa na mensalidade.';
+      if (item && item.recorrencia_tipo === 'conteudo_redes_sociais') return 'Gravação e edição de vídeos curtos para redes sociais, na cadência contratada.';
       return 'Manutenção e suporte para o seu site.';
     }
 
