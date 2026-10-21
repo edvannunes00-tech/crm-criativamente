@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sua proposta — Criativamente</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/components.css" />
+  <style>
+    body { background: var(--black); }
+    .prop-shell { max-width: 720px; margin: 0 auto; padding: 0 0 80px; }
+    .prop-logo { font-family: var(--font-mono); font-weight: 800; font-size: 16px; text-align: center; padding: 20px 0; }
+    .prop-logo .dot { color: var(--accent); }
+
+    .prop-capa { background: var(--near-black); border-radius: 0 0 16px 16px; padding: 40px 28px 44px; margin: 0 -1px; }
+    .prop-codigo { font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); letter-spacing: 0.06em; text-transform: uppercase; }
+    .prop-titulo { font-family: var(--font-display); font-weight: 800; font-size: 32px; line-height: 1.25; color: var(--white); margin-top: 14px; }
+    .prop-sub { color: var(--gray-1); font-size: 14px; margin-top: 10px; line-height: 1.6; }
+    .prop-linha { width: 36px; height: 2px; background: var(--accent); margin-top: 22px; }
+    .prop-cliente { color: var(--white); font-size: 14px; margin-top: 14px; }
+    .prop-validade { color: var(--gray-2); font-family: var(--font-mono); font-size: 11px; margin-top: 4px; letter-spacing: 0.04em; }
+
+    .prop-secao { padding: 32px 20px 0; }
+    .prop-eyebrow { font-family: var(--font-mono); font-size: 10.5px; color: var(--gray-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .prop-h2 { font-family: var(--font-display); font-weight: 800; font-size: 21px; color: var(--white); margin-bottom: 14px; }
+    .prop-h2 em { font-style: italic; color: var(--accent); }
+
+    .item-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; background: var(--near-black); }
+    .item-card .titulo { font-weight: 700; font-size: 14.5px; margin-bottom: 4px; }
+    .item-card .desc { color: var(--gray-1); font-size: 13px; line-height: 1.6; }
+    .item-card .valor-linha { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+    .item-card .valor { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 15px; }
+
+    .barra-chart { margin-top: 18px; }
+    .barra-linha { margin-bottom: 14px; }
+    .barra-rotulo { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--gray-1); margin-bottom: 6px; }
+    .barra-rotulo .v { font-family: var(--font-mono); color: var(--white); }
+    .barra-trilho { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+    .barra-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+    .barra-fill.desconto { background: var(--gray-2); }
+
+    .resumo-linha { display: flex; justify-content: space-between; padding: 10px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+    .resumo-linha:last-child { border-bottom: none; }
+    .resumo-linha > span:last-child { font-family: var(--font-mono); }
+
+    .prop-rodape { background: var(--near-black); border-radius: 16px 16px 0 0; margin-top: 36px; padding: 36px 28px 40px; text-align: center; }
+    .prop-rodape .msg { font-family: var(--font-display); font-weight: 800; font-size: 19px; color: var(--white); margin-bottom: 6px; }
+    .prop-rodape .sub { color: var(--gray-1); font-size: 13px; margin-bottom: 22px; }
+    .prop-acoes { display: flex; gap: 10px; }
+  </style>
+</head>
+<body>
+  <div class="prop-shell">
+    <div class="prop-logo">CRIATIVAMENTE<span class="dot">.</span></div>
+    <div id="conteudo"><div style="padding:0 20px;"><div class="skeleton" style="height:300px; border-radius:16px;"></div></div></div>
+  </div>
+
+  <script type="module">
+    import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
+    import { formatarMoeda, formatarData } from '/src/lib/format.js';
+
+    const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/proposta-publica`;
+    const hash = window.location.hash.replace('#', '');
+    const token = new URLSearchParams(hash).get('t');
+    const conteudo = document.getElementById('conteudo');
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderIndisponivel() {
+      conteudo.innerHTML = `
+        <div class="prop-secao">
+          <div class="card">
+            <p style="font-size:15px; line-height:1.6;">Esta proposta não está mais disponível.</p>
+            <p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">O link pode ter expirado, sido cancelado, ou a proposta já ter sido substituída por uma versão mais recente.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderErro() {
+      conteudo.innerHTML = `<div class="prop-secao"><div class="error-state"><p>Não foi possível carregar a proposta agora. Tente novamente em instantes.</p></div></div>`;
+    }
+
+    async function carregar() {
+      if (!token) { renderIndisponivel(); return; }
+      try {
+        const resp = await fetch(`${FUNCTION_URL}?t=${encodeURIComponent(token)}`);
+        const body = await resp.json();
+        if (!body.disponivel) { renderIndisponivel(); return; }
+        render(body.proposta, body.contratada);
+      } catch {
+        renderErro();
+      }
+    }
+
+    function blocoItens(itens) {
+      return (itens || []).map((i) => `
+        <div class="item-card">
+          <div class="titulo">${escapeHtml(i.descricao || 'Item')}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}</div>
+          ${i.escopo_objeto ? `<div class="desc">${escapeHtml(i.escopo_objeto)}</div>` : ''}
+          ${i.escopo_observacoes ? `<div class="desc" style="margin-top:4px;">${escapeHtml(i.escopo_observacoes)}</div>` : ''}
+          <div class="valor-linha"><span class="text-muted" style="font-size:12px;">Investimento do item</span><span class="valor">${formatarMoeda(i.valor_total)}</span></div>
+        </div>
+      `).join('');
+    }
+
+    function barraInvestimento(p) {
+      const tabela = Number(p.valor_tabela_total) || 0;
+      const negociado = Number(p.valor_negociado_total) || 0;
+      const desconto = Number(p.desconto_total) || 0;
+      if (tabela <= 0) return '';
+      const pctNegociado = Math.min(100, Math.round((negociado / tabela) * 100));
+      const pctDesconto = Math.min(100, Math.round((desconto / tabela) * 100));
+      return `
+        <div class="barra-chart">
+          <div class="barra-linha">
+            <div class="barra-rotulo"><span>Preço de tabela</span><span class="v">${formatarMoeda(tabela)}</span></div>
+            <div class="barra-trilho"><div class="barra-fill" style="width:100%; opacity:0.35;"></div></div>
+          </div>
+          <div class="barra-linha">
+            <div class="barra-rotulo"><span>Valor negociado</span><span class="v">${formatarMoeda(negociado)}</span></div>
+            <div class="barra-trilho"><div class="barra-fill" style="width:${pctNegociado}%;"></div></div>
+          </div>
+          ${desconto > 0 ? `
+          <div class="barra-linha">
+            <div class="barra-rotulo"><span>Desconto concedido</span><span class="v">${formatarMoeda(desconto)}</span></div>
+            <div class="barra-trilho"><div class="barra-fill desconto" style="width:${pctDesconto}%;"></div></div>
+          </div>` : ''}
+        </div>
+      `;
+    }
+
+    function render(p, contratada) {
+      const nomeCliente = p.cliente_nome || 'você';
+      const statusFinal = ['aceita', 'recusada', 'expirada', 'cancelada', 'substituida'].includes(p.status);
+
+      conteudo.innerHTML = `
+        <div class="prop-capa">
+          <div class="prop-codigo">Proposta comercial ${p.codigo ? `#${escapeHtml(p.codigo)}` : ''}</div>
+          <div class="prop-titulo">${escapeHtml(p.titulo)}</div>
+          ${p.objetivo ? `<div class="prop-sub">${escapeHtml(p.objetivo)}</div>` : ''}
+          <div class="prop-linha"></div>
+          <div class="prop-cliente">Proposta para <strong>${escapeHtml(nomeCliente)}</strong></div>
+          ${p.validade_at ? `<div class="prop-validade">VALIDADE · ${formatarData(p.validade_at)}</div>` : ''}
+        </div>
+
+        ${p.introducao || p.contexto ? `
+        <div class="prop-secao">
+          <div class="prop-eyebrow">Sobre a proposta</div>
+          ${p.introducao ? `<p style="font-size:13.5px; line-height:1.7; color:var(--gray-1);">${escapeHtml(p.introducao)}</p>` : ''}
+          ${p.contexto ? `<p style="font-size:13.5px; line-height:1.7; color:var(--gray-1); margin-top:8px;">${escapeHtml(p.contexto)}</p>` : ''}
+        </div>` : ''}
+
+        ${p.descricao_solucao || (p.itens && p.itens.length) ? `
+        <div class="prop-secao">
+          <div class="prop-eyebrow">Solução proposta</div>
+          ${p.descricao_solucao ? `<p style="font-size:13.5px; line-height:1.7; color:var(--gray-1); margin-bottom:14px;">${escapeHtml(p.descricao_solucao)}</p>` : ''}
+          ${blocoItens(p.itens)}
+        </div>` : ''}
+
+        ${(p.bonus && p.bonus.length) ? `
+        <div class="prop-secao">
+          <div class="prop-eyebrow">Bônus inclusos</div>
+          ${p.bonus.map((b) => `<div class="item-card"><div class="titulo">${escapeHtml(b.descricao)}${b.quantidade ? ` (x${b.quantidade})` : ''}</div></div>`).join('')}
+        </div>` : ''}
+
+        <div class="prop-secao">
+          <div class="prop-h2">Transparência e valor <em>real.</em></div>
+          <div class="resumo-linha"><span style="font-weight:700;">Valor total do investimento</span><span style="font-weight:700;">${formatarMoeda(p.valor_negociado_total)}</span></div>
+          ${barraInvestimento(p)}
+          ${p.forma_pagamento || p.parcelas_observacao ? `
+            <div class="mt-4">
+              <div class="prop-eyebrow">Condições de pagamento</div>
+              ${p.forma_pagamento ? `<p style="font-size:13px; color:var(--gray-1);">${escapeHtml(p.forma_pagamento)}</p>` : ''}
+              ${p.parcelas_observacao ? `<p style="font-size:13px; color:var(--gray-1); margin-top:4px;">${escapeHtml(p.parcelas_observacao)}</p>` : ''}
+            </div>` : ''}
+        </div>
+
+        ${p.condicoes_especiais ? `
+        <div class="prop-secao">
+          <div class="prop-eyebrow">Condições especiais</div>
+          <p style="font-size:13px; line-height:1.7; color:var(--gray-1);">${escapeHtml(p.condicoes_especiais)}</p>
+        </div>` : ''}
+
+        <div class="prop-rodape">
+          ${renderBlocoResposta(p, nomeCliente, contratada, statusFinal)}
+        </div>
+      `;
+
+      if (!statusFinal) ligarAcoes();
+    }
+
+    function renderBlocoResposta(p, nomeCliente, contratada, statusFinal) {
+      if (p.status === 'aceita') {
+        return `
+          <div class="msg">Proposta aceita ✓</div>
+          <div class="sub">Em breve a equipe da ${escapeHtml(contratada?.nome || 'Criativamente')} entra em contato com os próximos passos${p.ja_convertida_em_contrato ? ' — o contrato já está a caminho.' : '.'}</div>
+        `;
+      }
+      if (p.status === 'recusada') {
+        return `<div class="msg">Proposta recusada</div><div class="sub">Tudo bem — se mudar de ideia ou quiser ajustar algo, é só chamar a gente.</div>`;
+      }
+      if (p.status === 'expirada') {
+        return `<div class="msg">Proposta expirada</div><div class="sub">O prazo de validade passou. Fale com a gente pra receber uma proposta atualizada.</div>`;
+      }
+      if (p.status === 'cancelada' || p.status === 'substituida') {
+        return `<div class="msg">Esta proposta não está mais ativa</div><div class="sub">Fale com a gente se tiver dúvidas.</div>`;
+      }
+      return `
+        <div class="msg">Vamos transformar sua presença digital?</div>
+        <div class="sub">${escapeHtml(p.proximos_passos || 'Aprove a proposta abaixo e a gente já dá o próximo passo.')}</div>
+        <div class="prop-acoes">
+          <button class="btn btn-secondary" style="flex:1;" id="btnRecusar">Recusar</button>
+          <button class="btn btn-primary" style="flex:2;" id="btnAceitar">Quero aprovar esta proposta →</button>
+        </div>
+        <p class="erro-msg hidden" id="erroResposta" style="color:var(--status-erro); font-size:12.5px; margin-top:10px;"></p>
+      `;
+    }
+
+    function ligarAcoes() {
+      const btnAceitar = document.getElementById('btnAceitar');
+      const btnRecusar = document.getElementById('btnRecusar');
+      if (!btnAceitar || !btnRecusar) return;
+
+      async function responder(valor, botao) {
+        const erro = document.getElementById('erroResposta');
+        erro.classList.add('hidden');
+        btnAceitar.disabled = true; btnRecusar.disabled = true;
+        const textoOriginal = botao.textContent; botao.textContent = 'Enviando...';
+        try {
+          const resp = await fetch(FUNCTION_URL, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, acao: 'responder', resposta: valor }),
+          });
+          const body = await resp.json();
+          if (!body.ok) {
+            erro.textContent = body.motivo === 'proposta_expirada' ? 'Essa proposta expirou.' : 'Não foi possível registrar sua resposta agora. Tente novamente.';
+            erro.classList.remove('hidden');
+            btnAceitar.disabled = false; btnRecusar.disabled = false; botao.textContent = textoOriginal;
+            return;
+          }
+          await carregar();
+        } catch {
+          erro.textContent = 'Não foi possível registrar sua resposta agora. Tente novamente.';
+          erro.classList.remove('hidden');
+          btnAceitar.disabled = false; btnRecusar.disabled = false; botao.textContent = textoOriginal;
+        }
+      }
+
+      btnAceitar.addEventListener('click', () => responder('aceita', btnAceitar));
+      btnRecusar.addEventListener('click', () => {
+        if (!confirm('Tem certeza que quer recusar esta proposta?')) return;
+        responder('recusada', btnRecusar);
+      });
+    }
+
+    carregar();
+  </script>
+</body>
+</html>
