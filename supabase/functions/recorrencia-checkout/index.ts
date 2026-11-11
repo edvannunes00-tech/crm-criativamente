@@ -1,13 +1,16 @@
 // ============================================================
 // Edge Function: recorrencia-checkout  (publica; autenticacao = token do link)
 // ------------------------------------------------------------
-// acao "iniciar": cria a assinatura recorrente (preapproval do Mercado Pago) para o
-//   contrato do link e devolve a URL do checkout SEGURO do provedor. Valor e
-//   periodicidade vem do CATALOGO no servidor, nunca do navegador. Nenhum dado
-//   de cartao passa por aqui.
+// acao "iniciar": cria a assinatura recorrente (Preapproval do Mercado Pago) JA
+//   autorizada com o token de cartao que o Payment Brick tokenizou na propria
+//   pagina publica do contrato (embutido, sem redirecionar pro Mercado Pago --
+//   mesmo padrao ja validado no sinal avulso, no Agenda.Criativamente e no
+//   CriativaBio). Valor e periodicidade vem do CATALOGO no servidor, nunca do
+//   navegador. Nenhum dado de cartao passa por aqui, so o token de uso unico.
 // acao "status": devolve o estado financeiro real. Se a assinatura ainda aguarda
 //   confirmacao, consulta a API oficial do provedor e aplica o resultado (nao
 //   confia no navegador; nao marca nada como pago por conta propria).
+// acao "config": devolve a Public Key (nao e segredo, pode ir pro navegador).
 // ============================================================
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -17,7 +20,6 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const MP_API = "https://api.mercadopago.com";
-const SITE_URL = Deno.env.get("SITE_URL") ?? "https://crm.criativamentedigital.com.br";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
@@ -60,11 +62,21 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: CORS_HEADERS });
   try {
     if (req.method !== "POST") return json({ error: "Metodo nao permitido" }, 405);
-    let body: { token?: string; acao?: string; periodicidade?: string };
+    let body: Row;
     try { body = await req.json(); } catch { return json({ error: "Corpo invalido" }, 400); }
-    const { token, acao } = body;
+    const acao = body.acao;
+    if (!["config", "status", "iniciar"].includes(acao)) return json({ error: "acao deve ser 'config', 'status' ou 'iniciar'" }, 400);
+
+    const mpToken = Deno.env.get("MERCADO_PAGO_ACCESS_TOKEN");
+    const mpPublicKey = Deno.env.get("MERCADO_PAGO_PUBLIC_KEY");
+
+    if (acao === "config") {
+      if (!mpPublicKey) return json({ ok: false, motivo: "pagamento_nao_configurado" });
+      return json({ ok: true, publicKey: mpPublicKey });
+    }
+
+    const token = body.token;
     if (!token || typeof token !== "string") return json({ error: "token e obrigatorio" }, 400);
-    if (acao !== "iniciar" && acao !== "status") return json({ error: "acao deve ser 'iniciar' ou 'status'" }, 400);
 
     const db = admin();
     const ctx = await contextoDoLink(db, token);
@@ -84,9 +96,9 @@ Deno.serve(async (req: Request) => {
       const { data: dc } = await db.from("contrato_dados_cliente").select("assinatura_confirmada_em").eq("contrato_id", ctx.link.contrato_id).limit(1).maybeSingle();
       return json({
         ok: true,
-        configurado: Boolean(Deno.env.get("MERCADO_PAGO_ACCESS_TOKEN")),
+        configurado: Boolean(mpToken && mpPublicKey),
         valores: { mensal: ctx.produto.recorrencia_valor_mensal, anual: ctx.produto.recorrencia_valor_anual },
-        assinatura: a ? { periodicidade: a.periodicidade, valor: a.valor, status_financeiro: a.status_financeiro, proxima_cobranca_em: a.proxima_cobranca_em, tem_checkout: Boolean(a.checkout_url) } : null,
+        assinatura: a ? { periodicidade: a.periodicidade, valor: a.valor, status_financeiro: a.status_financeiro, proxima_cobranca_em: a.proxima_cobranca_em } : null,
         assinou_contrato: Boolean(dc?.assinatura_confirmada_em),
       });
     }
@@ -95,17 +107,15 @@ Deno.serve(async (req: Request) => {
     if (ctx.link.status !== "dados_confirmados") return json({ ok: false, motivo: "link_indisponivel" }); // contrato ja assinado nao inicia nova cobranca
     const periodicidade = body.periodicidade;
     if (periodicidade !== "mensal" && periodicidade !== "anual") return json({ error: "periodicidade deve ser 'mensal' ou 'anual'" }, 400);
-    const mpToken = Deno.env.get("MERCADO_PAGO_ACCESS_TOKEN");
-    if (!mpToken) return json({ ok: false, motivo: "pagamento_nao_configurado" }); // nao finge nada
+    if (!mpToken || !mpPublicKey) return json({ ok: false, motivo: "pagamento_nao_configurado" }); // nao finge nada
+
+    const formData = body.formData as Row | undefined;
+    if (!formData || !formData.token) return json({ error: "token do cartao ausente (Payment Brick nao tokenizou)" }, 400);
 
     if (a && ["ativo", "pendente", "inadimplente"].includes(a.status_financeiro)) return json({ ok: false, motivo: "recorrencia_ja_existente" });
 
     const valor = Number(periodicidade === "mensal" ? ctx.produto.recorrencia_valor_mensal : ctx.produto.recorrencia_valor_anual);
     if (!valor || valor <= 0) return json({ ok: false, motivo: "valor_nao_configurado" });
-
-    if (a && a.status_financeiro === "aguardando_pagamento" && a.checkout_url && a.periodicidade === periodicidade) {
-      return json({ ok: true, checkout_url: a.checkout_url });
-    }
 
     const { data: cliente } = await db.from("contrato_dados_cliente").select("email").eq("contrato_id", ctx.link.contrato_id).limit(1).maybeSingle();
     if (!cliente?.email) return json({ ok: false, motivo: "email_do_cliente_ausente" });
@@ -113,7 +123,7 @@ Deno.serve(async (req: Request) => {
     if (!contrato) return json({ ok: false, motivo: "link_indisponivel" });
 
     if (a) {
-      await db.from("assinaturas_recorrentes").update({ periodicidade, valor, checkout_url: null, plano: ctx.produto.recorrencia_tipo }).eq("id", a.id);
+      await db.from("assinaturas_recorrentes").update({ periodicidade, valor, plano: ctx.produto.recorrencia_tipo }).eq("id", a.id);
       a = { ...a, periodicidade, valor };
     } else {
       const { data: nova, error: errIns } = await db.from("assinaturas_recorrentes").insert({
@@ -131,9 +141,8 @@ Deno.serve(async (req: Request) => {
         reason: `${ctx.produto.nome} (${periodicidade})`,
         external_reference: a!.id,
         payer_email: cliente.email,
-        status: "pending", // sem token de cartao: o pagador escolhe o meio no checkout do proprio Mercado Pago
-        // Sem o token do link na URL: o navegador guarda o token localmente e volta por aqui.
-        back_url: `${SITE_URL}/contrato-publico.html?pagamento=retorno&ref=${a!.id}`,
+        card_token_id: formData.token,
+        status: "authorized",
         notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`,
         auto_recurring: {
           frequency: periodicidade === "anual" ? 12 : 1, frequency_type: "months",
@@ -148,10 +157,10 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, motivo: "falha_no_provedor", debug: { http: resp.status, message: d.message, error: d.error, cause: Array.isArray(d.cause) ? d.cause.map((c: Row) => ({ code: c.code, description: c.description })) : undefined } });
     }
     const mp = await resp.json();
-    if (!mp.id || !mp.init_point) return json({ ok: false, motivo: "falha_no_provedor" });
+    if (!mp.id || !mp.status) return json({ ok: false, motivo: "falha_no_provedor" });
 
-    await db.from("assinaturas_recorrentes").update({ provider_subscription_id: String(mp.id), checkout_url: mp.init_point, status_provedor: String(mp.status ?? "pending") }).eq("id", a!.id);
-    return json({ ok: true, checkout_url: mp.init_point });
+    await db.from("assinaturas_recorrentes").update({ provider_subscription_id: String(mp.id), status_provedor: String(mp.status ?? "") }).eq("id", a!.id);
+    return json({ ok: true, status: mp.status });
   } catch (_err) {
     return json({ ok: false, motivo: "erro_interno" }, 500);
   }
