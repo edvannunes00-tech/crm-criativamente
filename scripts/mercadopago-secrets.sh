@@ -24,6 +24,21 @@ if [ "${1:-}" = "--webhook" ]; then
   exit 0
 fi
 
+# Public Key: nunca foi necessária antes (Checkout Pro só usava o Access Token
+# no servidor) -- agora o Payment Brick embutido precisa dela no navegador do
+# cliente (não é segredo, mas ainda assim fica guardada como as outras).
+if [ "${1:-}" = "--publickey" ]; then
+  read -r -s -p "Public Key do Mercado Pago (use a de TESTE primeiro; não aparece ao digitar): " PK; echo
+  PK="$(printf '%s' "${PK}" | tr -d '[:space:]')"
+  if [ -z "${PK}" ]; then echo "Chave vazia. Nada foi salvo."; exit 1; fi
+  echo "Tamanho da chave: ${#PK} caracteres."
+  $SB secrets set --project-ref "$REF" "MERCADO_PAGO_PUBLIC_KEY=${PK}"
+  unset PK
+  echo; $SB secrets list --project-ref "$REF" | grep -i "MERCADO_PAGO" || true
+  echo "Pronto. Avise o Claude que terminou."
+  exit 0
+fi
+
 read -r -s -p "Access Token do Mercado Pago (use o de TESTE primeiro; não aparece ao digitar): " MP_TOKEN; echo
 # tira espaços/quebras de linha que vêm junto ao colar
 MP_TOKEN="$(printf '%s' "${MP_TOKEN}" | tr -d '[:space:]')"

@@ -100,17 +100,21 @@ async function processar(db: ReturnType<typeof admin>, token: string, tipo: stri
     if (!p) return "recurso_indisponivel";
     const refId = p.external_reference ? String(p.external_reference) : null;
     if (!refId || !UUID.test(refId)) return "sem_referencia_valida";
-    const { data: pagamento } = await db.from("contrato_pagamentos_avulsos").select("id, provider_preference_id").eq("id", refId).maybeSingle();
+    const { data: pagamento } = await db.from("contrato_pagamentos_avulsos").select("id").eq("id", refId).maybeSingle();
     if (!pagamento) return "pagamento_desconhecido"; // referencia nao e um pagamento avulso nosso (ex.: outro fluxo do MP)
     const status = mapearPagamento(p.status);
     if (!status) return "status_nao_mapeado";
     const statusAvulso = status === "aprovada" ? "aprovado" : status === "recusada" ? "recusado" : status === "estornada" ? "estornado" : status === "cancelada" ? "cancelado" : "pendente";
-    const { data } = await db.rpc("registrar_pagamento_avulso", {
-      p_provider_preference_id: pagamento.provider_preference_id, p_provider_payment_id: String(p.id),
-      p_status: statusAvulso, p_status_provedor: String(p.status ?? ""), p_valor: Number(p.transaction_amount ?? 0),
-      p_pago_em: p.date_approved ?? null,
+    // external_reference ja e o id proprio da linha (Payment Brick cria o pagamento
+    // direto via Payments API, sem preference) -- aplicar_pagamento_avulso_mp (migration
+    // 59) localiza por id, nao mais por provider_preference_id.
+    const qrCode = p.point_of_interaction?.transaction_data?.qr_code ?? null;
+    const qrCodeBase64 = p.point_of_interaction?.transaction_data?.qr_code_base64 ?? null;
+    const { data } = await db.rpc("aplicar_pagamento_avulso_mp", {
+      p_pagamento_id: pagamento.id, p_status: statusAvulso, p_status_provedor: String(p.status ?? ""),
+      p_provider_payment_id: String(p.id), p_qr_code: qrCode, p_qr_code_base64: qrCodeBase64, p_pago_em: p.date_approved ?? null,
     });
-    return `pagamento_avulso:${data}`;
+    return `pagamento_avulso:${data?.id ?? "ok"}`;
   }
 
   return "tipo_ignorado";

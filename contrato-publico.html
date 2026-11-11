@@ -46,6 +46,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://sdk.mercadopago.com/js/v2"></script>
   <script type="module">
     import { SUPABASE_URL } from '/src/lib/supabaseClient.js';
     import { formatarMoeda } from '/src/lib/format.js';
@@ -517,10 +518,23 @@
       sem_sinal_configurado: null,
       pagamento_nao_configurado: 'O pagamento online do sinal ainda não está disponível. Nossa equipe combina com você por outro canal.',
       sinal_ja_pago: null,
-      falha_no_provedor: 'Não foi possível abrir o pagamento agora. Tente novamente em instantes.',
+      falha_no_provedor: 'Não foi possível processar o pagamento agora. Tente novamente em instantes.',
     };
 
-    let pollingSinal = 0;
+    // Pagamento embutido (Payment Brick: cartão + Pix, sem redirecionar pro Mercado
+    // Pago) — mesmo padrão do Agenda.Criativamente. publicKey e a instância do SDK
+    // são reaproveitadas entre renders; o controller é desmontado antes de remontar.
+    let mpPublicKeyCache = null;
+    let mpClienteInstance = null;
+    let brickController = null;
+    const obterPublicKeySinal = async () => {
+      if (mpPublicKeyCache) return mpPublicKeyCache;
+      const data = await chamarSinal('config');
+      if (!data || !data.ok) throw new Error((data && MSG_SINAL[data.motivo]) || 'Não foi possível carregar a configuração do pagamento.');
+      mpPublicKeyCache = data.publicKey;
+      return mpPublicKeyCache;
+    };
+
     async function renderBlocoSinal(containerId) {
       const alvo = document.getElementById(containerId);
       if (!alvo) return;
@@ -529,48 +543,81 @@
       if (!st || !st.ok || !st.valor) { alvo.innerHTML = ''; return; }
 
       const pg = st.pagamento;
-      const voltouDoSinal = new URLSearchParams(window.location.search).get('sinal') === 'retorno';
 
       if (pg && pg.status === 'aprovado') {
+        if (brickController) { try { brickController.unmount(); } catch { /* já desmontado */ } brickController = null; }
         alvo.innerHTML = `<div class="card mt-4" style="border-color:var(--status-sucesso);"><p style="font-size:14px; font-weight:700;">✓ Sinal de ${formatarMoeda(pg.valor)} pago (${pg.metodo === 'pix' ? 'Pix' : 'cartão'}).</p></div>`;
         return;
       }
 
-      if (pg && pg.status === 'pendente' && pg.checkout_url) {
+      if (pg && pg.status === 'pendente' && pg.metodo === 'pix' && pg.qr_code_base64) {
         alvo.innerHTML = `
           <div class="card mt-4">
             <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Sinal de ${formatarMoeda(pg.valor)}</p>
-            <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">${voltouDoSinal ? 'Estamos aguardando a confirmação do Mercado Pago. Isso pode levar alguns instantes.' : 'Pagamento iniciado, ainda não confirmado.'}</p>
-            <button class="btn btn-secondary btn-block" id="btnVerificarSinal">Verificar novamente</button>
-            <button class="btn btn-primary btn-block mt-2" id="btnContinuarSinal">Continuar para o pagamento</button>
+            <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Aguardando pagamento via Pix.</p>
+            <img src="data:image/png;base64,${pg.qr_code_base64}" alt="QR Code Pix" style="max-width:220px; display:block; margin:0 auto 10px;" />
+            <label style="font-size:11px; color:var(--gray-2);">Pix copia e cola</label>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <input id="sinalPixCopiaCola" readonly value="${(pg.qr_code || '').replace(/"/g, '&quot;')}" style="flex:1; font-size:11px;" />
+              <button type="button" class="btn btn-secondary" id="btnCopiarPixSinal">Copiar</button>
+            </div>
+            <button class="btn btn-primary btn-block mt-4" id="btnVerificarSinal">Verificar pagamento</button>
+            <p class="erro-msg hidden" id="erroSinal" style="color:var(--status-erro); font-size:12.5px; margin-top:8px;"></p>
           </div>`;
-        document.getElementById('btnVerificarSinal').addEventListener('click', () => renderBlocoSinal(containerId));
-        document.getElementById('btnContinuarSinal').addEventListener('click', () => { window.location.href = pg.checkout_url; });
-        if (voltouDoSinal && pollingSinal < 12) { pollingSinal += 1; setTimeout(() => renderBlocoSinal(containerId), 5000); }
+        document.getElementById('btnCopiarPixSinal').addEventListener('click', async () => {
+          const campo = document.getElementById('sinalPixCopiaCola');
+          try { await navigator.clipboard.writeText(pg.qr_code || ''); document.getElementById('btnCopiarPixSinal').textContent = 'Copiado!'; }
+          catch { campo.select(); }
+        });
+        document.getElementById('btnVerificarSinal').addEventListener('click', async (e) => {
+          const btn = e.target; btn.disabled = true; const t = btn.textContent; btn.textContent = 'Verificando...';
+          await renderBlocoSinal(containerId);
+          if (document.getElementById('btnVerificarSinal')) { document.getElementById('btnVerificarSinal').disabled = false; document.getElementById('btnVerificarSinal').textContent = t; }
+        });
         return;
       }
 
       alvo.innerHTML = `
         <div class="card mt-4">
           <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Pagar o sinal agora</p>
-          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Valor: ${formatarMoeda(st.valor)}. Escolha como prefere pagar.</p>
-          <button class="btn btn-primary btn-block" id="btnSinalCartao">Pagar no cartão</button>
-          <button class="btn btn-secondary btn-block mt-2" id="btnSinalPix">Pagar no Pix</button>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Valor: ${formatarMoeda(st.valor)}. Pagamento feito aqui mesmo, sem sair desta página.</p>
+          <div id="sinalBrickContainer"></div>
           <p class="erro-msg hidden" id="erroSinal" style="color:var(--status-erro); font-size:12.5px; margin-top:8px;"></p>
         </div>`;
-      const iniciar = async (metodo, btn) => {
-        const erro = document.getElementById('erroSinal'); erro.classList.add('hidden');
-        btn.disabled = true; const t = btn.textContent; btn.textContent = 'Abrindo...';
-        try {
-          const r = await chamarSinal('iniciar', { metodo });
-          if (r && r.ok && r.checkout_url) { window.location.href = r.checkout_url; return; }
-          erro.textContent = (r && MSG_SINAL[r.motivo]) || 'Não foi possível iniciar o pagamento agora.';
-          erro.classList.remove('hidden');
-        } catch { erro.textContent = 'Não foi possível iniciar o pagamento agora.'; erro.classList.remove('hidden'); }
-        btn.disabled = false; btn.textContent = t;
-      };
-      document.getElementById('btnSinalCartao').addEventListener('click', (e) => iniciar('cartao', e.target));
-      document.getElementById('btnSinalPix').addEventListener('click', (e) => iniciar('pix', e.target));
+
+      const brickContainer = document.getElementById('sinalBrickContainer');
+      const erro = document.getElementById('erroSinal');
+      try {
+        const publicKey = await obterPublicKeySinal();
+        if (brickController) { try { brickController.unmount(); } catch { /* já desmontado */ } brickController = null; }
+        if (!mpClienteInstance) mpClienteInstance = new MercadoPago(publicKey, { locale: 'pt-BR' });
+        const bricksBuilder = mpClienteInstance.bricks();
+        brickController = await bricksBuilder.create('payment', 'sinalBrickContainer', {
+          initialization: { amount: st.valor },
+          customization: { paymentMethods: { creditCard: 'all', bankTransfer: 'all' } },
+          callbacks: {
+            onReady: () => {},
+            onSubmit: ({ formData }) => new Promise((resolve, reject) => {
+              erro.classList.add('hidden');
+              chamarSinal('cobrar', { formData }).then((r) => {
+                if (!r || !r.ok) {
+                  erro.textContent = (r && (r.detalhe || MSG_SINAL[r.motivo])) || 'Não foi possível processar o pagamento agora.';
+                  erro.classList.remove('hidden');
+                  reject();
+                  return;
+                }
+                resolve();
+                renderBlocoSinal(containerId);
+              }).catch(() => { erro.textContent = 'Erro de conexão ao processar o pagamento.'; erro.classList.remove('hidden'); reject(); });
+            }),
+            onError: (err) => { console.error('Payment Brick (sinal):', err); erro.textContent = 'Erro no formulário de pagamento.'; erro.classList.remove('hidden'); },
+          },
+        });
+      } catch (e) {
+        brickContainer.innerHTML = '';
+        erro.textContent = e.message || 'Não foi possível carregar o formulário de pagamento.';
+        erro.classList.remove('hidden');
+      }
     }
 
     function renderJaAssinado() {
