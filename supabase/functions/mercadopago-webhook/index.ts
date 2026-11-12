@@ -100,17 +100,19 @@ async function processar(db: ReturnType<typeof admin>, token: string, tipo: stri
     if (!p) return "recurso_indisponivel";
     const refId = p.external_reference ? String(p.external_reference) : null;
     if (!refId || !UUID.test(refId)) return "sem_referencia_valida";
-    const { data: pagamento } = await db.from("contrato_pagamentos_avulsos").select("id").eq("id", refId).maybeSingle();
+    const { data: pagamento } = await db.from("contrato_pagamentos_avulsos").select("id, assinatura_recorrente_id").eq("id", refId).maybeSingle();
     if (!pagamento) return "pagamento_desconhecido"; // referencia nao e um pagamento avulso nosso (ex.: outro fluxo do MP)
     const status = mapearPagamento(p.status);
     if (!status) return "status_nao_mapeado";
     const statusAvulso = status === "aprovada" ? "aprovado" : status === "recusada" ? "recusado" : status === "estornada" ? "estornado" : status === "cancelada" ? "cancelado" : "pendente";
     // external_reference ja e o id proprio da linha (Payment Brick cria o pagamento
-    // direto via Payments API, sem preference) -- aplicar_pagamento_avulso_mp (migration
-    // 59) localiza por id, nao mais por provider_preference_id.
+    // direto via Payments API, sem preference) -- as funcoes de aplicar localizam por
+    // id, nao mais por provider_preference_id. Cobranca Pix da recorrencia (migration
+    // 60) usa uma funcao propria, que tambem atualiza a assinatura/site_status.
     const qrCode = p.point_of_interaction?.transaction_data?.qr_code ?? null;
     const qrCodeBase64 = p.point_of_interaction?.transaction_data?.qr_code_base64 ?? null;
-    const { data } = await db.rpc("aplicar_pagamento_avulso_mp", {
+    const rpcNome = pagamento.assinatura_recorrente_id ? "aplicar_cobranca_recorrencia_pix" : "aplicar_pagamento_avulso_mp";
+    const { data } = await db.rpc(rpcNome, {
       p_pagamento_id: pagamento.id, p_status: statusAvulso, p_status_provedor: String(p.status ?? ""),
       p_provider_payment_id: String(p.id), p_qr_code: qrCode, p_qr_code_base64: qrCodeBase64, p_pago_em: p.date_approved ?? null,
     });

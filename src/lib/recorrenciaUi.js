@@ -13,6 +13,16 @@ const SUP_LABEL = { ativo: 'Suporte ativo', em_carencia: 'Em carência', suspens
 const SUP_BADGE = { ativo: 'dot-sucesso', em_carencia: 'dot-info', suspenso: 'dot-erro', encerrado: 'dot-neutro', aguardando: 'dot-neutro' };
 const COB_LABEL = { aprovada: 'Aprovada', recusada: 'Recusada', pendente: 'Pendente', estornada: 'Estornada', cancelada: 'Cancelada' };
 const STATUS_CONTRATO = { rascunho: 'Rascunho', enviado: 'Enviado', aguardando_assinatura: 'Aguardando assinatura', assinado: 'Assinado', validado: 'Validado', cancelado: 'Cancelado' };
+const SITE_LABEL = { nao_aplicavel: '—', no_ar: 'No ar', suspenso: 'Suspenso' };
+
+// Define manualmente o site_status (liga/desliga a automação baseada em pagamento).
+// Pedido explícito: ter sempre uma opção de voltar o site no ar manualmente
+// enquanto investiga/ajusta o pagamento, sem depender da automação.
+async function definirSiteStatusManual(assinaturaId, siteStatus, manual) {
+  const { data, error } = await supabase.rpc('definir_site_status_manual', { p_assinatura_id: assinaturaId, p_site_status: siteStatus, p_manual: manual });
+  if (error) throw error;
+  return data;
+}
 
 // filtro: { contrato_id } ou { contato_id }
 export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, linkContrato = false, aoAlterar }) {
@@ -46,6 +56,14 @@ export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, 
           <div><div class="mono-label">Última recusada</div><div>${r.ultima_recusada_em ? formatarData(r.ultima_recusada_em) : '—'}</div></div>
           ${r.cancelado_em ? `<div><div class="mono-label">Cancelada em</div><div>${formatarData(r.cancelado_em, true)}</div></div>` : ''}
         </div>
+        <div class="flex items-center gap-2 mt-4" style="flex-wrap:wrap;">
+          <div class="mono-label">Site</div>
+          <span class="badge ${r.site_status === 'suspenso' ? 'dot-erro' : r.site_status === 'no_ar' ? 'dot-sucesso' : 'dot-neutro'}"><span class="dot"></span>${SITE_LABEL[r.site_status] || r.site_status}</span>
+          ${r.site_status_manual
+            ? `<span class="text-muted" style="font-size:11.5px;">travado manualmente</span><button class="btn btn-secondary btn-sm" data-site-auto="${r.id}">Voltar ao automático</button>`
+            : `<button class="btn btn-secondary btn-sm" data-site-manual="${r.id}" data-site-valor="no_ar">Marcar no ar</button>
+               <button class="btn btn-secondary btn-sm" data-site-manual="${r.id}" data-site-valor="suspenso" style="color:var(--status-erro);">Suspender agora</button>`}
+        </div>
         ${cobrancas.length ? `
           <div class="mono-label mt-4 mb-2">Últimas cobranças</div>
           ${cobrancas.map((c) => `<div class="resumo-linha" style="display:flex; justify-content:space-between; padding:4px 0; font-size:12.5px;"><span>${c.ocorrida_em ? formatarData(c.ocorrida_em, true) : '—'}</span><span>${COB_LABEL[c.status] || c.status}</span><span>${formatarMoeda(c.valor)}</span></div>`).join('')}` : ''}
@@ -69,6 +87,26 @@ export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, 
       btn.disabled = false; btn.textContent = 'Cancelar recorrência';
       return;
     }
+    await renderBlocoRecorrencia(container, { filtro, podeCancelar, linkContrato, aoAlterar });
+    if (aoAlterar) aoAlterar();
+  }));
+
+  container.querySelectorAll('[data-site-manual]').forEach((btn) => btn.addEventListener('click', async () => {
+    const valor = btn.dataset.siteValor;
+    if (valor === 'suspenso' && !confirm('Marcar o site como suspenso? Isso só é um rótulo no painel — você ainda precisa tirar o site do ar manualmente onde ele está hospedado. A automação por pagamento para de tocar neste status até você mesmo voltar ao automático.')) return;
+    btn.disabled = true;
+    try { await definirSiteStatusManual(btn.dataset.siteManual, valor, true); }
+    catch (err) { alert('Não foi possível alterar: ' + err.message); btn.disabled = false; return; }
+    await renderBlocoRecorrencia(container, { filtro, podeCancelar, linkContrato, aoAlterar });
+    if (aoAlterar) aoAlterar();
+  }));
+
+  container.querySelectorAll('[data-site-auto]').forEach((btn) => btn.addEventListener('click', async () => {
+    const rec = recs.find((x) => x.id === btn.dataset.siteAuto);
+    const statusAuto = rec && rec.status_financeiro === 'ativo' ? 'no_ar' : 'suspenso';
+    btn.disabled = true;
+    try { await definirSiteStatusManual(btn.dataset.siteAuto, statusAuto, false); }
+    catch (err) { alert('Não foi possível alterar: ' + err.message); btn.disabled = false; return; }
     await renderBlocoRecorrencia(container, { filtro, podeCancelar, linkContrato, aoAlterar });
     if (aoAlterar) aoAlterar();
   }));

@@ -446,6 +446,46 @@
         return;
       }
 
+      // Recorrência por Pix: cada mês é uma cobrança avulsa própria (o Mercado
+      // Pago não tem Pix recorrente) — por isso 'ativo' aqui NÃO significa
+      // "nunca mais precisa fazer nada": significa "o mês atual está pago" ou
+      // "ainda falta gerar o Pix deste mês". st.pix_mes_atual manda nessas duas
+      // situações; só cai no fluxo de cartão (abaixo) quando não existe.
+      if (a && a.metodo === 'pix' && !['cancelado', 'encerrado'].includes(a.status_financeiro)) {
+        const pg = st.pix_mes_atual;
+        if (pg && pg.status === 'aprovado') {
+          if (!st.assinou_contrato) { renderAssinatura(true); return; }
+          conteudo.innerHTML = `<div class="card" style="text-align:center;"><div style="font-size:32px; margin-bottom:12px;">✓</div><p style="font-size:15px; font-weight:700;">Mensalidade de ${pg.competencia} paga (Pix)</p><p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">A cobrança do próximo mês é gerada automaticamente — basta voltar a este mesmo link quando chegar a hora.</p></div>`;
+          return;
+        }
+        if (pg && pg.status === 'pendente' && pg.qr_code_base64) {
+          renderPixRecorrencia(pg);
+          return;
+        }
+        // Mês ainda não gerado (1ª visita do mês, ou recém virou o mês).
+        conteudo.innerHTML = `
+          ${rotulo}
+          <div class="card">
+            <p style="font-size:14px; line-height:1.6;">Sua mensalidade (${formatarMoeda(a.valor)}) deste mês ainda não foi gerada.</p>
+            <button class="btn btn-primary btn-block mt-4" id="btnGerarPixMes">Gerar Pix deste mês</button>
+            <p class="erro-msg hidden" id="erroPixMes" style="color:var(--status-erro); font-size:12.5px; margin-top:8px;"></p>
+            ${LINK_VOLTAR}
+          </div>`;
+        ligarVoltar();
+        document.getElementById('btnGerarPixMes').addEventListener('click', async (e) => {
+          const btn = e.target; btn.disabled = true; btn.textContent = 'Gerando...';
+          const r = await chamarCheckout('cobrar-pix-mes').catch(() => null);
+          if (!r || !r.ok) {
+            document.getElementById('erroPixMes').textContent = (r && MSG_MOTIVO[r.motivo]) || 'Não foi possível gerar o Pix agora.';
+            document.getElementById('erroPixMes').classList.remove('hidden');
+            btn.disabled = false; btn.textContent = 'Gerar Pix deste mês';
+            return;
+          }
+          renderPagamento();
+        });
+        return;
+      }
+
       if (a && a.status_financeiro === 'ativo') {
         if (st.assinou_contrato) {
           conteudo.innerHTML = `<div class="card" style="text-align:center;"><div style="font-size:32px; margin-bottom:12px;">✓</div><p style="font-size:15px; font-weight:700;">Contratação concluída</p><p class="text-muted mt-2" style="font-size:13.5px; line-height:1.6;">O pagamento recorrente foi confirmado e o contrato está assinado.</p></div>`;
@@ -487,9 +527,68 @@
           ${LINK_VOLTAR}
         </div>`;
       ligarVoltar();
-      document.getElementById('btnMensal').addEventListener('click', () => renderBrickRecorrencia('mensal', Number(v.mensal)));
+      document.getElementById('btnMensal').addEventListener('click', () => renderEscolhaMetodo('mensal', Number(v.mensal)));
       const btnAnual = document.getElementById('btnAnual');
-      if (btnAnual) btnAnual.addEventListener('click', () => renderBrickRecorrencia('anual', Number(v.anual)));
+      if (btnAnual) btnAnual.addEventListener('click', () => renderEscolhaMetodo('anual', Number(v.anual)));
+    }
+
+    // Preapproval (cartão) não tem Pix recorrente no Mercado Pago -- por isso
+    // o método é escolhido ANTES do Brick: cartão segue pro Preapproval
+    // (renderBrickRecorrencia), Pix gera a cobrança avulsa do mês (iniciarPixRecorrencia).
+    function renderEscolhaMetodo(periodicidade, valor) {
+      const rotulo = cabecalhoPasso(6, 'pagamento', 'Como vamos cobrar a recorrência?');
+      conteudo.innerHTML = `
+        ${rotulo}
+        <div class="card">
+          <p style="font-size:14px; font-weight:700; margin-bottom:6px;">${formatarMoeda(valor)} ${periodicidade === 'anual' ? '/ ano' : '/ mês'}</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:14px;">Como você prefere pagar?</p>
+          <button class="btn btn-primary btn-block" id="btnMetodoCartao">Cartão de crédito</button>
+          <button class="btn btn-secondary btn-block mt-2" id="btnMetodoPix">Pix</button>
+          ${periodicidade === 'mensal' ? '<p class="text-muted mt-2" style="font-size:11.5px; line-height:1.6;">No Pix, a mensalidade é gerada mês a mês: volte a este link quando chegar a hora de pagar a próxima.</p>' : ''}
+          <p class="mt-4" style="margin:0;"><a href="#" id="linkVoltarEscolha" style="font-size:12.5px;">← Voltar</a></p>
+        </div>`;
+      document.getElementById('linkVoltarEscolha').addEventListener('click', (e) => { e.preventDefault(); renderPagamento(); });
+      document.getElementById('btnMetodoCartao').addEventListener('click', () => renderBrickRecorrencia(periodicidade, valor));
+      document.getElementById('btnMetodoPix').addEventListener('click', () => iniciarPixRecorrencia(periodicidade));
+    }
+
+    async function iniciarPixRecorrencia(periodicidade) {
+      const rotulo = cabecalhoPasso(6, 'pagamento', 'Como vamos cobrar a recorrência?');
+      conteudo.innerHTML = `${rotulo}<div class="skeleton" style="height:160px;"></div>`;
+      const r = await chamarCheckout('iniciar', { periodicidade, metodo: 'pix' }).catch(() => null);
+      if (!r || !r.ok) {
+        conteudo.innerHTML = `${rotulo}<div class="card"><p class="erro-msg" style="color:var(--status-erro); font-size:13px;">${(r && MSG_MOTIVO[r.motivo]) || 'Não foi possível gerar o Pix agora.'}</p>${LINK_VOLTAR}</div>`;
+        ligarVoltar();
+        return;
+      }
+      pollingPagamento = 0;
+      renderPixRecorrencia(r.pagamento);
+    }
+
+    function renderPixRecorrencia(pg) {
+      const rotulo = cabecalhoPasso(6, 'pagamento', 'Como vamos cobrar a recorrência?');
+      conteudo.innerHTML = `
+        ${rotulo}
+        <div class="card">
+          <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Mensalidade de ${pg.competencia} — ${formatarMoeda(pg.valor)}</p>
+          <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Aguardando pagamento via Pix.</p>
+          ${pg.qr_code_base64 ? `<img src="data:image/png;base64,${pg.qr_code_base64}" alt="QR Code Pix" style="max-width:220px; display:block; margin:0 auto 10px;" />` : ''}
+          <label style="font-size:11px; color:var(--gray-2);">Pix copia e cola</label>
+          <div style="display:flex; gap:6px; margin-top:4px;">
+            <input id="recorrenciaPixCopiaCola" readonly value="${(pg.qr_code || '').replace(/"/g, '&quot;')}" style="flex:1; font-size:11px;" />
+            <button type="button" class="btn btn-secondary" id="btnCopiarPixRecorrencia">Copiar</button>
+          </div>
+          <button class="btn btn-primary btn-block mt-4" id="btnVerificarPixRecorrencia">Verificar pagamento</button>
+          ${LINK_VOLTAR}
+        </div>`;
+      ligarVoltar();
+      document.getElementById('btnCopiarPixRecorrencia').addEventListener('click', async () => {
+        const campo = document.getElementById('recorrenciaPixCopiaCola');
+        try { await navigator.clipboard.writeText(pg.qr_code || ''); document.getElementById('btnCopiarPixRecorrencia').textContent = 'Copiado!'; }
+        catch { campo.select(); }
+      });
+      document.getElementById('btnVerificarPixRecorrencia').addEventListener('click', renderPagamento);
+      if (pollingPagamento < 12) { pollingPagamento += 1; setTimeout(renderPagamento, 5000); }
     }
 
     // Payment Brick embutido (cartão — Preapproval não tem equivalente de
