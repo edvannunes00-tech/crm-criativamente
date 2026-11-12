@@ -4,8 +4,8 @@
 // Mostra status do CONTRATO e status FINANCEIRO separados.
 // ============================================================
 import { supabase } from './supabaseClient.js';
-import { formatarMoeda, formatarData, escapeHtml } from './format.js';
-import { cancelarRecorrencia } from './contratoLinks.js';
+import { formatarMoeda, formatarData, escapeHtml, whatsappLink } from './format.js';
+import { cancelarRecorrencia, abrirLinkContrato } from './contratoLinks.js';
 
 const FIN_LABEL = { aguardando_pagamento: 'Aguardando pagamento', ativo: 'Em dia', pendente: 'Pagamento pendente', inadimplente: 'Inadimplente', cancelado: 'Cancelado', encerrado: 'Encerrado' };
 const FIN_BADGE = { aguardando_pagamento: 'dot-neutro', ativo: 'dot-sucesso', pendente: 'dot-info', inadimplente: 'dot-erro', cancelado: 'dot-neutro', encerrado: 'dot-neutro' };
@@ -36,14 +36,26 @@ export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, 
   const { data: cobs } = await supabase.from('cobrancas_recorrentes').select('assinatura_id, status, valor, ocorrida_em, provider_payment_id')
     .in('assinatura_id', ids).order('ocorrida_em', { ascending: false }).limit(60);
 
+  // Link ativo (ainda não assinado/não revogado) por contrato -- é o MESMO link
+  // público que leva direto pra tela de pagamento se os dados já estiverem
+  // confirmados (contrato-publico.html decide a etapa certa sozinho). Reaproveita
+  // a mesma infra da aba "Link" do contrato, só que com um botão direto aqui.
+  const contratoIds = [...new Set(recs.map((r) => r.contrato_id))];
+  const { data: linksAtivos } = await supabase.from('contrato_links').select('id, contrato_id, status, created_at')
+    .in('contrato_id', contratoIds).in('status', ['ativo', 'dados_confirmados', 'confirmado']).is('excluido_em', null).order('created_at', { ascending: false });
+
   container.innerHTML = recs.map((r) => {
     const cobrancas = (cobs || []).filter((c) => c.assinatura_id === r.id).slice(0, 5);
     const viva = !['cancelado', 'encerrado'].includes(r.status_financeiro);
+    const linkAtivo = (linksAtivos || []).find((l) => l.contrato_id === r.contrato_id);
     return `
       <div class="card mb-4" data-rec="${r.id}">
         <div class="flex items-center justify-between mb-2">
           <span class="mono-label">${r.plano === 'gestao_trafego' ? 'Gestão de tráfego pago' : 'Manutenção do site'}${linkContrato ? ` — <a href="/ficha-contrato.html?id=${r.contrato_id}" style="color:var(--white); text-decoration:underline;">${escapeHtml(r.contrato_titulo || 'contrato')}</a>` : ''}</span>
-          ${podeCancelar && viva ? `<button class="btn btn-secondary btn-sm" data-cancelar-rec="${r.id}" style="color:var(--status-erro);">Cancelar recorrência</button>` : ''}
+          <span class="flex gap-2">
+            ${podeCancelar && viva && linkAtivo ? `<button class="btn btn-secondary btn-sm" data-reenviar-link="${linkAtivo.id}" data-contato-rec="${r.contato_id}">Reenviar link de pagamento</button>` : ''}
+            ${podeCancelar && viva ? `<button class="btn btn-secondary btn-sm" data-cancelar-rec="${r.id}" style="color:var(--status-erro);">Cancelar recorrência</button>` : ''}
+          </span>
         </div>
         <div class="flex gap-4" style="flex-wrap:wrap; align-items:center;">
           <div><div class="mono-label">Plano</div><div>${r.periodicidade === 'anual' ? 'Anual' : 'Mensal'} — ${formatarMoeda(r.valor)}</div></div>
@@ -89,6 +101,29 @@ export async function renderBlocoRecorrencia(container, { filtro, podeCancelar, 
     }
     await renderBlocoRecorrencia(container, { filtro, podeCancelar, linkContrato, aoAlterar });
     if (aoAlterar) aoAlterar();
+  }));
+
+  container.querySelectorAll('[data-reenviar-link]').forEach((btn) => btn.addEventListener('click', async () => {
+    const rotulo = btn.textContent; btn.disabled = true; btn.textContent = 'Copiando...';
+    try {
+      const r = await abrirLinkContrato(btn.dataset.reenviarLink);
+      const url = `${window.location.origin}/contrato-publico.html#t=${r.token}`;
+      await navigator.clipboard.writeText(url);
+      btn.textContent = 'Link copiado!';
+      const { data: contatoInfo } = await supabase.from('contatos').select('whatsapp').eq('id', btn.dataset.contatoRec).maybeSingle();
+      if (contatoInfo && contatoInfo.whatsapp) {
+        const wa = document.createElement('button');
+        wa.className = 'btn btn-secondary btn-sm'; wa.textContent = 'Enviar pelo WhatsApp';
+        wa.addEventListener('click', () => {
+          window.open(`${whatsappLink(contatoInfo.whatsapp)}?text=${encodeURIComponent(`Olá! Segue o link para você acompanhar/pagar sua mensalidade:\n\n${url}`)}`, '_blank');
+        });
+        btn.insertAdjacentElement('afterend', wa);
+      }
+      setTimeout(() => { btn.disabled = false; btn.textContent = rotulo; }, 4000);
+    } catch (err) {
+      alert('Não foi possível reenviar o link: ' + err.message);
+      btn.disabled = false; btn.textContent = rotulo;
+    }
   }));
 
   container.querySelectorAll('[data-site-manual]').forEach((btn) => btn.addEventListener('click', async () => {

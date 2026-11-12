@@ -777,8 +777,69 @@
           <a href="/contrato-segunda-via.html" class="btn btn-secondary btn-block mt-4">Solicitar segunda via</a>
         </div>
         <div id="blocoSinalJaAssinado"></div>
+        ${dadosContrato && dadosContrato.recorrencia ? '<div id="blocoRecorrenciaJaAssinado"></div>' : ''}
       `;
       renderBlocoSinal('blocoSinalJaAssinado');
+      if (dadosContrato && dadosContrato.recorrencia) renderBlocoRecorrenciaJaAssinado('blocoRecorrenciaJaAssinado');
+    }
+
+    // Depois de assinado, o link continua vivo pra quem paga a mensalidade
+    // por Pix (precisa voltar todo mês pra gerar a cobrança -- não existe
+    // Pix recorrente no Mercado Pago). Cartão não precisa disso (cobra
+    // sozinho via Preapproval), então aqui não aparece nada pra quem paga
+    // de cartão.
+    async function renderBlocoRecorrenciaJaAssinado(containerId) {
+      const alvo = document.getElementById(containerId);
+      if (!alvo) return;
+      let st;
+      try { st = await chamarCheckout('status'); } catch { st = null; }
+      if (!st || !st.ok || !st.assinatura || st.assinatura.metodo !== 'pix') { alvo.innerHTML = ''; return; }
+      if (['cancelado', 'encerrado'].includes(st.assinatura.status_financeiro)) { alvo.innerHTML = ''; return; }
+
+      const pg = st.pix_mes_atual;
+      if (pg && pg.status === 'aprovado') {
+        alvo.innerHTML = `<div class="card mt-4" style="border-color:var(--status-sucesso);"><p style="font-size:14px; font-weight:700;">✓ Mensalidade de ${pg.competencia} paga (Pix).</p><p class="text-muted mt-2" style="font-size:12.5px;">A cobrança do próximo mês é gerada automaticamente — volte a este link quando chegar a hora.</p></div>`;
+        return;
+      }
+      if (pg && pg.status === 'pendente' && pg.qr_code_base64) {
+        alvo.innerHTML = `
+          <div class="card mt-4">
+            <p style="font-size:14px; font-weight:700; margin-bottom:6px;">Mensalidade de ${pg.competencia} — ${formatarMoeda(pg.valor)}</p>
+            <p class="text-muted" style="font-size:13px; line-height:1.6; margin-bottom:10px;">Aguardando pagamento via Pix.</p>
+            <img src="data:image/png;base64,${pg.qr_code_base64}" alt="QR Code Pix" style="max-width:220px; display:block; margin:0 auto 10px;" />
+            <label style="font-size:11px; color:var(--gray-2);">Pix copia e cola</label>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <input id="recJaAssPixCopiaCola" readonly value="${(pg.qr_code || '').replace(/"/g, '&quot;')}" style="flex:1; font-size:11px;" />
+              <button type="button" class="btn btn-secondary" id="btnCopiarPixJaAssinado">Copiar</button>
+            </div>
+            <button class="btn btn-primary btn-block mt-4" id="btnVerificarPixJaAssinado">Verificar pagamento</button>
+          </div>`;
+        document.getElementById('btnCopiarPixJaAssinado').addEventListener('click', async () => {
+          const campo = document.getElementById('recJaAssPixCopiaCola');
+          try { await navigator.clipboard.writeText(pg.qr_code || ''); document.getElementById('btnCopiarPixJaAssinado').textContent = 'Copiado!'; }
+          catch { campo.select(); }
+        });
+        document.getElementById('btnVerificarPixJaAssinado').addEventListener('click', () => renderBlocoRecorrenciaJaAssinado(containerId));
+        return;
+      }
+
+      alvo.innerHTML = `
+        <div class="card mt-4">
+          <p style="font-size:14px; line-height:1.6;">Sua mensalidade (${formatarMoeda(st.assinatura.valor)}) deste mês ainda não foi gerada.</p>
+          <button class="btn btn-primary btn-block mt-4" id="btnGerarPixMesJaAssinado">Gerar Pix deste mês</button>
+          <p class="erro-msg hidden" id="erroPixMesJaAssinado" style="color:var(--status-erro); font-size:12.5px; margin-top:8px;"></p>
+        </div>`;
+      document.getElementById('btnGerarPixMesJaAssinado').addEventListener('click', async (e) => {
+        const btn = e.target; btn.disabled = true; btn.textContent = 'Gerando...';
+        const r = await chamarCheckout('cobrar-pix-mes').catch(() => null);
+        if (!r || !r.ok) {
+          document.getElementById('erroPixMesJaAssinado').textContent = (r && MSG_MOTIVO[r.motivo]) || 'Não foi possível gerar o Pix agora.';
+          document.getElementById('erroPixMesJaAssinado').classList.remove('hidden');
+          btn.disabled = false; btn.textContent = 'Gerar Pix deste mês';
+          return;
+        }
+        renderBlocoRecorrenciaJaAssinado(containerId);
+      });
     }
 
     function renderAssinatura(pagamentoConfirmado) {

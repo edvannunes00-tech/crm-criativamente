@@ -47,7 +47,12 @@ Deno.serve(async (req: Request) => {
     const { data: pode } = await db.rpc("tem_permissao", { p_usuario_id: userData.user.id, p_empresa_id: link.empresa_id, p_modulo_chave: "contratos", p_acao: "editar" });
     if (!pode) return json({ error: "Sem permissao." }, 403);
 
-    if (!["ativo", "dados_confirmados"].includes(link.status) || new Date(link.expires_at) <= new Date()) {
+    // 'confirmado' (contrato assinado) nunca expira -- mesma regra da propria
+    // pagina publica (crm.registrar_acesso_link_contrato): so 'ativo' tem prazo.
+    // Precisa continuar reabrivel pra quem paga a recorrencia por Pix (volta
+    // no mesmo link todo mes pra gerar a cobranca; nao ha Pix recorrente).
+    const aindaValido = link.status === "confirmado" || (["ativo", "dados_confirmados"].includes(link.status) && new Date(link.expires_at) > new Date());
+    if (!aindaValido) {
       return json({ ok: false, motivo: "link_encerrado", error: "Este link nao esta mais em andamento." }, 409);
     }
     if (!link.token_cifrado) {
